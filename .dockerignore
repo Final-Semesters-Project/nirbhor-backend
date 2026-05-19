@@ -1,0 +1,13 @@
+venv
+.venv
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+alembic/versions/*.pyc
+.env
+.git
+.idea
+.vscode
+*.db
+# test/ => exclude test folder in production

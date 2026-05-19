@@ -1,1 +1,34 @@
+FROM python:3.12-slim
 
+# No venv inside Dockerfile.dev
+# Because this is development mode, and I already have a venv in local folder for VSCode.
+# Inside Docker dev container: we already install dependencies with pip install -r requirements.txt
+# Docker dev container is temporary
+# No need to isolate Python inside the container
+# Dev is meant to be fast, hot reload, disposable.
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# No COPY . . in Dockerfile.dev. Because dev mode uses:
+# volumes:
+#  - ./backend:/app
+# Which means: host PC code is mounted live into the container. Any change in VSCode instantly updates inside container → triggers reload. If we also COPY . ., the image would contain old code and conflict.
+
+
+EXPOSE 8000
+
+# No alembic upgrade head in dev
+# Reason: Alembic migrations should not run automatically on every save. Hot reload would repeatedly try to run Alembic → bad idea.
+#Dev mode rule: run Alembic manually: 
+# docker exec -it backend_dev alembic upgrade head
+
+
+CMD ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
