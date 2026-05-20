@@ -1,12 +1,60 @@
 ### create virtual environment
 ```
-python3 -m venv .venv
+Linux: python3 -m venv .venv
 ```
+- If you are facing problems to install libraries using pip install even after activating venv, getting error like "externally-managed-environments", then do the following:
+ - 1. Delete the corrupted venv: ```rm -rf .venv```
+ - 2. Ensure you have python3-venv installed: 
+        ```
+            sudo apt update
+            sudo apt install python3-venv python3-full
+        ```
+ - 3. sudo apt install python3-venv python3-full
+ - 4. Create the venv: ```python3 -m venv .venv```
+ - 5. Activate
+ - 6. Verify the link: ```which pip```
 
 ## Activate Virtual Environment (venv)
 ```
-source .venv/bin/activate
+Linux: source .venv/bin/activate
+Windows: .venv\Scripts\activate  
+Gitbash terminal: source .venv/Scripts/activate
 ```
+
+## Install libraries from requirements.txt
+```
+pip install -r requirements.txt
+```
+
+## Save libraries to requirements.txt
+```
+pip freeze > requirements.txt
+```
+
+## Run server with docker
+```
+docker compose -f docker-compose.dev.yml up --build
+```
+
+## Database migrations
+- Generate alembic migrations
+```
+docker exec -it nirbhar_backend_dev alembic revision --autogenerate -m "message"  
+```
+
+- Apply migrations
+```
+docker exec -it nirbhar_backend_dev alembic upgrade head  
+```
+
+
+## Stop Container
+```
+Keeps DB data: docker compose -f docker-compose.dev.yml down OR ctrl+c
+
+Deletes DB data: docker compose -f docker-compose.dev.yml down -v  
+```
+
 
 # Packages/Libraries
 1. FastAPI(standard)

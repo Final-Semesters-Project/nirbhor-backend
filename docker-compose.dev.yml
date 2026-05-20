@@ -1,0 +1,30 @@
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile.dev
+    container_name: nirbhor_backend_dev
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./:/app
+    depends_on:
+      - db
+    environment:
+      - PYTHONUNBUFFERED=1
+      - PYTHONDONTWRITEBYTECODE=1
+      - FORCE_COLOR=1  # force docker to color output
+      - TERM=xterm-256color # set terminal type
+
+  db:
+    image: postgis/postgis:16-3.4
+    container_name: nirbhor_db_dev_with_postgis
+    env_file: .env
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+volumes:
+  postgres_data:
