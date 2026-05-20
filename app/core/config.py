@@ -18,6 +18,7 @@ class Settings(BaseSettings):
     REFRESH_TOKEN_EXPIRE_MINUTES: int = 604800
 
     APP_ENV: str
+    STAGING_API_KEY: SecretStr
 
     # Splits the cors origins string and converts into a list
     CORS_ORIGINS: Any = []

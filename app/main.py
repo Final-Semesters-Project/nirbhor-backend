@@ -18,6 +18,17 @@ else:
     )
 
 
+# middlewares
+# 1. check for staging key if in staging
+if ENV == "staging":
+    from app.middleware.staging_auth import StagingAuthMiddleware
+
+    app.add_middleware(
+        StagingAuthMiddleware,
+        staging_api_key=settings.STAGING_API_KEY
+    )
+
+
 # add this to wake up the server
 @app.get("/")
 @app.head("/")
