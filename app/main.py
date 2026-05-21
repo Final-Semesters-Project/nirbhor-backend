@@ -1,5 +1,8 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Depends
+from sqlalchemy import select, literal
 from app.core.config import settings
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db_session
 
 # check if in production or development
 ENV = settings.APP_ENV or "development"
@@ -20,7 +23,7 @@ else:
 
 # middlewares
 # 1. check for staging key if in staging
-if ENV == "staging":
+if ENV == "staging" and settings.STAGING_API_KEY is not None:
     from app.middleware.staging_auth import StagingAuthMiddleware
 
     app.add_middleware(
@@ -37,7 +40,11 @@ async def root():
 
 
 # crete a router to check db health using select 1
-
+@app.get("/health")
+async def check_db(session: AsyncSession = Depends(get_db_session)):
+    query = select(literal(1))
+    result = await session.execute(query)
+    return result.scalar()
 
 if __name__ == "__main__":
     import uvicorn
