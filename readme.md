@@ -39,12 +39,12 @@ docker compose -f docker-compose.dev.yml up --build
 ## Database migrations
 - Generate alembic migrations
 ```
-docker exec -it nirbhar_backend_dev alembic revision --autogenerate -m "message"  
+docker exec -it nirbhor_backend_dev alembic revision --autogenerate -m "message"  
 ```
 
 - Apply migrations
 ```
-docker exec -it nirbhar_backend_dev alembic upgrade head  
+docker exec -it nirbhor_backend_dev alembic upgrade head  
 ```
 
 

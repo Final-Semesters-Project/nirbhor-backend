@@ -5,12 +5,16 @@ from sqlalchemy import pool
 import os
 from alembic import context
 from dotenv import load_dotenv
+from app.models import user
 
 # import models from app.models to here manually if alembic doesn't generate them
 
 # load env variables from .env
-load_dotenv()
-sync_database_url = os.getenv("SYNC_DATABASE_URL")
+# load_dotenv()
+# sync_database_url = os.getenv("SYNC_DATABASE_URL")
+
+# if not sync_database_url:
+#     raise ValueError("SYNC_DATABASE_URL is not set in your .env file!")
 
 # this is the Alembic Config object, which provides
 # access to the values within the .ini file in use.
@@ -33,6 +37,19 @@ target_metadata = Base.metadata
 # ... etc.
 
 
+# This function is added so that alembic doesn't delete the tables that are not part of Base.metadata like table from default PostGIS extension
+def include_object(object, name, type_, reflected, compare_to):
+    # Only include tables that are part of your Base.metadata
+    if type_ == "table" and name not in target_metadata.tables:
+        return False
+    # Explicitly ignore sequences owned by PostGIS/Tiger
+    if type_ == "sequence" and reflected and object.info.get("skip_autogenerate", False):
+        return False
+    return True
+
+# TODO: add geometry types to columns when starting to use PostGIS in provider_profile and others. We need to configure alembic for this(Alembic is showing warnings in the console for not having geometry types)
+
+
 def run_migrations_offline() -> None:
     """Run migrations in 'offline' mode.
 
@@ -51,6 +68,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
+        include_object=include_object
     )
 
     with context.begin_transaction():
@@ -64,6 +82,18 @@ def run_migrations_online() -> None:
     and associate a connection with the context.
 
     """
+    # 1 and 2 are added manually to solve alembic migration error
+    load_dotenv()
+
+    # 1. Get the URL from your environment variable
+    sync_database_url = os.getenv("SYNC_DATABASE_URL")
+
+    if not sync_database_url:
+        raise ValueError("SYNC_DATABASE_URL is not set in your .env file!")
+
+    # 2. Force it into the config object so engine_from_config can find it
+    config.set_main_option("sqlalchemy.url", sync_database_url)
+
     connectable = engine_from_config(
         config.get_section(config.config_ini_section, {}),
         prefix="sqlalchemy.",
@@ -72,7 +102,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata
+            connection=connection, target_metadata=target_metadata,
+            include_object=include_object
         )
 
         with context.begin_transaction():
