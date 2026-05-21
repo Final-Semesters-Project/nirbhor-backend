@@ -1,8 +1,20 @@
 from fastapi import FastAPI, Depends
+from loguru import logger
 from sqlalchemy import select, literal
 from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
+from contextlib import asynccontextmanager
+from app.core.logging import setup_logging
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # runs on startup, before any requests
+    setup_logging()
+    yield
+    # runs on shutdown, after all requests
+
 
 # check if in production or development
 ENV = settings.APP_ENV or "development"

@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: nirbhor_backend_dev
+    tty: true # ← allocates a pseudo-TTY, loguru detects it and enables colors
+    stdin_open: true   # ← keeps stdin open (needed alongside tty)
     env_file: .env
     ports:
       - "8000:8000"
