@@ -4,6 +4,8 @@ services:
       context: .
       dockerfile: Dockerfile.dev
     container_name: nirbhor_backend_dev
+    tty: true # ← allocates a pseudo-TTY, loguru detects it and enables colors
+    stdin_open: true   # ← keeps stdin open (needed alongside tty)
     env_file: .env
     ports:
       - "8000:8000"
@@ -25,6 +27,18 @@ services:
       - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: nirbhor_pgadmin_dev
+    ports:
+      - "5050:80"
+    environment:
+      PGADMIN_DEFAULT_EMAIL: "admin@admin.com"
+      PGADMIN_DEFAULT_PASSWORD: "admin"
+    depends_on:
+      - db
+
 
 volumes:
   postgres_data:
