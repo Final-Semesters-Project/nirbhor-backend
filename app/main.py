@@ -52,11 +52,11 @@ async def root():
 
 
 # crete a router to check db health using select 1
-@app.get("/health")
-async def check_db(session: AsyncSession = Depends(get_db_session)):
-    query = select(literal(1))
-    result = await session.execute(query)
-    return result.scalar()
+# @app.get("/health")
+# async def check_db(session: AsyncSession = Depends(get_db_session)):
+#     query = select(literal(1))
+#     result = await session.execute(query)
+#     return result.scalar()
 
 if __name__ == "__main__":
     import uvicorn
