@@ -26,8 +26,7 @@ engine = create_async_engine(
     poolclass=NullPool if not is_local else AsyncAdaptedQueuePool,
     connect_args=connect_args,
     future=True,  # this enables sqlalchemy 2.0
-    echo=True  # enable temporary logging before setting up logging
-    # echo=False  # disable sqlalchemy logging, we will use loguru instead
+    echo=False  # disable sqlalchemy logging, we will use loguru instead
 )
 
 
