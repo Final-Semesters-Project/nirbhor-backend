@@ -1,12 +1,11 @@
 import uuid
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Enum as sqlEnum, Float, ForeignKey, Integer, String, DateTime
+from sqlalchemy import Boolean, Enum as sqlEnum, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 import enum
 from app.models.mixins.uuid_mixin import UUIDMixin
 from app.models.mixins.timestamp_mixin import TimestampMixin
-from pydantic import EmailStr
 
 
 class VerificationLevel(str, enum.Enum):

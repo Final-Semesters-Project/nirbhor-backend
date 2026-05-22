@@ -6,6 +6,7 @@ from sqlalchemy import Enum as sqlEnum, DateTime
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
 from datetime import datetime
+from pydantic import EmailStr
 
 
 class Role(str, enum.Enum):
@@ -54,7 +55,7 @@ class User(UUIDMixin, TimestampMixin, Base):
         index=True
     )  # Firebase phone/google auth UID
 
-    google_email: Mapped[str | None] = mapped_column(
+    google_email: Mapped[EmailStr | None] = mapped_column(
         String,
         unique=True,
         nullable=True,
