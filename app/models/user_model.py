@@ -68,3 +68,10 @@ class User(UUIDMixin, TimestampMixin, Base):
         uselist=False,  # for 1-to-1
         cascade="all, delete-orphan"  # delete profile when user is deleted
     )
+
+    # 1-to-many relationship to fcm token
+    fcm_token: Mapped[list["FCMToken"]] = relationship(  # type: ignore
+        back_populates="user",
+        uselist=True,  # for 1-to-many
+        cascade="all, delete-orphan"  # delete token when user is deleted
+    )
