@@ -62,7 +62,7 @@ Deletes DB data: docker compose -f docker-compose.dev.yml down -v
 3. Asyncpg (async postgres driver for asyncio)
 4. Psycopg2 (sync postgres driver for alembic migrations)
 5. GeoAlchemy2
-6. Alembic (not installed yet)
+6. Alembic
 7. firebase-admin (not installed yet)
 8. apscheduler
 9. passlib-bcrypt & argon2(for password hashing)

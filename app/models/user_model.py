@@ -1,7 +1,6 @@
 from app.db.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import Integer, String, Boolean
-from pydantic import EmailStr
+from sqlalchemy import String, Boolean
 import enum
 from sqlalchemy import Enum as sqlEnum, DateTime
 from app.models.mixins.timestamp_mixin import TimestampMixin
@@ -9,7 +8,7 @@ from app.models.mixins.uuid_mixin import UUIDMixin
 from datetime import datetime
 
 
-class Role(enum.Enum):
+class Role(str, enum.Enum):
     SEEKER = "seeker"
     PROVIDER = "provider"
     ADMIN = "admin"
@@ -43,21 +42,28 @@ class User(UUIDMixin, TimestampMixin, Base):
         default=True
     )  # False = banned by admins
 
-    last_active_at: Mapped[datetime] = mapped_column(
+    last_active_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=False
+        nullable=True
     )
 
-    firebase_uid: Mapped[str] = mapped_column(
+    firebase_uid: Mapped[str | None] = mapped_column(
         String,
         unique=True,
         nullable=True,
         index=True
     )  # Firebase phone/google auth UID
 
-    google_email: Mapped[str] = mapped_column(
+    google_email: Mapped[str | None] = mapped_column(
         String,
         unique=True,
         nullable=True,
         index=True
     )  # Linked Google account email
+
+    # 1-1 relationship to provider profile (let us do user.provider_profile)
+    provider_profile: Mapped["ProviderProfile | None"] = relationship(  # type: ignore
+        back_populates="user",
+        uselist=False,  # for 1-to-1
+        cascade="all, delete-orphan"  # delete profile when user is deleted
+    )
