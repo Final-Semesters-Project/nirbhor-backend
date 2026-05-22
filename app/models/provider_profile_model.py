@@ -4,7 +4,6 @@ from sqlalchemy import Boolean, Enum as sqlEnum, Float, ForeignKey, Integer, Str
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 import enum
-from app.models.mixins.uuid_mixin import UUIDMixin
 from app.models.mixins.timestamp_mixin import TimestampMixin
 
 
@@ -20,14 +19,14 @@ class VerificationStatus(str, enum.Enum):
     REJECTED = "REJECTED"
 
 
-class ProviderProfile(UUIDMixin, TimestampMixin, Base):
+class ProviderProfile(TimestampMixin, Base):
     __tablename__ = "provider_profiles"
 
     # 1-to-1 with users — user_id IS the primary key
     user_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         primary_key=True,
-    )
+    )  # this is the primary key, No UUIDMixin
 
     # back-reference to user
     user: Mapped["User"] = relationship(  # type: ignore
@@ -74,7 +73,7 @@ class ProviderProfile(UUIDMixin, TimestampMixin, Base):
 
     # PostGIS point — stores (longitude, latitude)
     base_location: Mapped[object] = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326),
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
         nullable=False,
     )
 
@@ -96,3 +95,9 @@ class ProviderProfile(UUIDMixin, TimestampMixin, Base):
 
     ai_review_summary_bn: Mapped[str | None] = mapped_column(
         String, nullable=True)
+
+    # add skill_links relationship
+    skill_links: Mapped[list["ProviderSkillLink"]] = relationship(  # type: ignore
+        back_populates="provider",
+        cascade="all, delete-orphan",
+    )
