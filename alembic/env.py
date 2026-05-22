@@ -6,7 +6,7 @@ from alembic import context
 from dotenv import load_dotenv
 from geoalchemy2 import alembic_helpers
 from app.db.base import Base
-from app.models import User, ProviderProfile, Category
+from app.models import User, ProviderProfile, Category, Skill
 
 # import models from app.models to here manually if alembic doesn't generate them
 
