@@ -9,3 +9,4 @@ from .team_model import Team
 from .urgent_broadcast_model import UrgentBroadcast
 from .user_session_model import UserSession
 from .user_report_model import UserReport
+from .app_version_model import AppVersion
