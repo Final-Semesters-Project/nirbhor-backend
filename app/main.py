@@ -34,7 +34,7 @@ else:
 
 
 # middlewares
-# 1. check for staging key if in staging
+# 1. check for staging key if in staging (this is for frontend to test the backend server, the staging key lets the frontend access the backend but other people can't access it. Render doesn't allow deployments with custom user permissions in free tier)
 if ENV == "staging" and settings.STAGING_API_KEY is not None:
     from app.middleware.staging_auth import StagingAuthMiddleware
 
