@@ -98,3 +98,9 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="claimed_by",
         foreign_keys="UrgentBroadcast.claimed_by_provider_id",
     )
+
+    # relationship to user session
+    sessions: Mapped[list["UserSession"]] = relationship(  # type: ignore
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
