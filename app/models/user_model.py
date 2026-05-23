@@ -114,3 +114,14 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="reported_user",
         foreign_keys="UserReport.reported_user_id",
     )
+
+    # relationship to review
+    reviews_given: Mapped[list["Review"]] = relationship(  # type: ignore
+        back_populates="reviewer",
+        foreign_keys="Review.reviewer_id",
+    )
+
+    reviews_received: Mapped[list["Review"]] = relationship(  # type: ignore
+        back_populates="reviewee",
+        foreign_keys="Review.reviewee_id",
+    )
