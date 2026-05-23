@@ -27,7 +27,7 @@ class FCMToken(UUIDMixin, TimestampMixin, Base):
         uselist=False,
     )
 
-    token: Mapped[str] = mapped_column(String, nullable=True)
+    token: Mapped[str] = mapped_column(String, nullable=False, unique=True)
 
     device_type: Mapped[DeviceType] = mapped_column(
         sqlEnum(

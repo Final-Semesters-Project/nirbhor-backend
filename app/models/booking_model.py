@@ -104,3 +104,9 @@ class Booking(UUIDMixin, TimestampMixin, Base):
         back_populates="bookings",
         uselist=False,
     )
+
+    # relationships to review model
+    reviews: Mapped[list["Review"]] = relationship(  # type: ignore
+        back_populates="booking",
+        cascade="all, delete-orphan",
+    )
