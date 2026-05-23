@@ -75,3 +75,15 @@ class User(UUIDMixin, TimestampMixin, Base):
         uselist=True,  # for 1-to-many
         cascade="all, delete-orphan"  # delete token when user is deleted
     )
+
+    bookings_as_seeker: Mapped[list["Booking"]] = relationship(  # type: ignore
+        back_populates="seeker",
+        foreign_keys=["Booking.seeker_id"],  # type: ignore
+        cascade="all, delete-orphan"
+    )
+
+    bookings_as_provider: Mapped[list["Booking"]] = relationship(  # type: ignore
+        back_populates="provider",
+        foreign_keys=["Booking.provider_id"],  # type: ignore
+        # No cascade because deleting a user shouldn't delete booking records
+    )
