@@ -104,3 +104,13 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="user",
         cascade="all, delete-orphan",
     )
+
+    # relationship to user report
+    reports_made: Mapped[list["UserReport"]] = relationship(  # type: ignore
+        back_populates="reporter",
+        foreign_keys="UserReport.reporter_id",
+    )
+    reports_received: Mapped[list["UserReport"]] = relationship(  # type: ignore
+        back_populates="reported_user",
+        foreign_keys="UserReport.reported_user_id",
+    )
