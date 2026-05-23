@@ -96,12 +96,11 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     )
 
     # team_id and team relationship added later when Team model exists
-    # team_id: Mapped[uuid.UUID | None] = mapped_column(
-    #     ForeignKey("teams.id", ondelete="CASCADE"),
-    #     nullable=True
-    # )
-
-    # team: Mapped["Team"] = relationship(  # type: ignore
-    #     back_populates="bookings",
-    #     uselist=False,
-    # )
+    team_id: Mapped[uuid.UUID | None] = mapped_column(
+        ForeignKey("teams.id", ondelete="SET NULL"),  # SET NULL not CASCADE
+        nullable=True,
+    )
+    team: Mapped["Team | None"] = relationship(  # type: ignore
+        back_populates="bookings",
+        uselist=False,
+    )
