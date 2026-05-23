@@ -1,3 +1,4 @@
+from app.api.v1.auth_router import router as auth_router
 from fastapi import FastAPI, Depends
 from loguru import logger
 from sqlalchemy import select, literal
@@ -49,6 +50,9 @@ if ENV == "staging" and settings.STAGING_API_KEY is not None:
 @app.head("/")
 async def root():
     return {"status": "awake"}
+
+
+app.include_router(auth_router, prefix="/api/v1")
 
 
 # crete a router to check db health using select 1
