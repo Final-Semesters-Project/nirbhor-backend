@@ -8,15 +8,15 @@ from app.models.mixins.timestamp_mixin import TimestampMixin
 
 
 class VerificationLevel(str, enum.Enum):
-    BASIC = "BASIC"
-    VERIFIED = "VERIFIED"
-    TRUSTED = "TRUSTED"
+    BASIC = "basic"
+    VERIFIED = "verified"
+    TRUSTED = "trusted"
 
 
 class VerificationStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class ProviderProfile(TimestampMixin, Base):

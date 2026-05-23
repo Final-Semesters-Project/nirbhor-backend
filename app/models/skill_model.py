@@ -34,3 +34,8 @@ class Skill(TimestampMixin, Base):
     provider_links: Mapped[list["ProviderSkillLink"]] = relationship(  # type: ignore
         back_populates="skill",
     )
+
+    bookings: Mapped[list["Booking"]] = relationship(  # type: ignore
+        back_populates="skill",
+        uselist=True
+    )

@@ -14,7 +14,7 @@ class ProviderSkillLink(TimestampMixin, Base):
         primary_key=True,
     )  # user_id is the primary key of provider_profiles
 
-    skill_id: Mapped[uuid.UUID] = mapped_column(
+    skill_id: Mapped[int] = mapped_column(
         ForeignKey("skills.id", ondelete="CASCADE"),
         primary_key=True,
     )
