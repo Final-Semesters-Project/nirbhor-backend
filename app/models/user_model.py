@@ -87,3 +87,14 @@ class User(UUIDMixin, TimestampMixin, Base):
         foreign_keys=["Booking.provider_id"],  # type: ignore
         # No cascade because deleting a user shouldn't delete booking records
     )
+
+    # relationship to urgent broadcast
+    urgent_broadcasts: Mapped[list["UrgentBroadcast"]] = relationship(  # type: ignore
+        back_populates="seeker",
+        foreign_keys="UrgentBroadcast.seeker_id",
+    )
+
+    claimed_broadcasts: Mapped[list["UrgentBroadcast"]] = relationship(  # type: ignore
+        back_populates="claimed_by",
+        foreign_keys="UrgentBroadcast.claimed_by_provider_id",
+    )

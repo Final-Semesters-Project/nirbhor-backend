@@ -5,3 +5,5 @@ from .skill_model import Skill
 from .provider_skill_link_model import ProviderSkillLink
 from .fcm_token import FCMToken
 from .booking_model import Booking
+from .team_model import Team
+from .urgent_broadcast_model import UrgentBroadcast

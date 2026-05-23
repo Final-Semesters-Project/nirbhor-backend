@@ -101,3 +101,8 @@ class ProviderProfile(TimestampMixin, Base):
         back_populates="provider",
         cascade="all, delete-orphan",
     )
+
+    # add teams relationship
+    teams: Mapped[list["Team"]] = relationship(  # type: ignore
+        back_populates="leader",
+    )
