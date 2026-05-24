@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Response
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
@@ -19,10 +19,11 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 )
 async def register_seeker(
     data: SeekerRegisterSchema,
+    response: Response,
     db: AsyncSession = Depends(get_db_session),
 ):
     try:
-        return await AuthService.register_seeker(data, db)
+        return await AuthService.register_seeker(data=data, db=db, response=response, device_info=None)
     except Exception as e:
         logger.error(f"Seeker registration failed: {e}")
         raise HTTPException(

@@ -1,4 +1,4 @@
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, field_validator, Field
 import re
 from uuid import UUID
 
@@ -14,8 +14,14 @@ def validate_phone(phone: str) -> str:
 
 class RegistrationBaseSchema(BaseModel):
     name: str
-    phone: str
-    password: str
+    phone: str = Field(
+        ...,
+        description="Phone number must start with 01[3-9] (BD only)"
+    )
+    password: str = Field(
+        ...,
+        description="Password must be at least 8 characters", min_length=8
+    )
 
     @field_validator("phone")
     @classmethod
@@ -38,7 +44,10 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
     skill_ids: list[int]          # list of skill IDs from the skills table
     latitude: float               # seeker sends coordinates
     longitude: float
-    working_radius_km: int
+    working_radius_km: int = Field(
+        ..., gt=0, le=4,
+        description="Working radius must be between 1 and 5 km"
+    )
     has_smartphone: bool
 
     @field_validator("working_radius_km")
@@ -50,9 +59,23 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
 
 
 class AuthResponseSchema(BaseModel):
-    access_token: str
+    access_token: str = Field(
+        ...,
+        description="Read from response body. Send in Authorization header: Bearer <token>"
+    )
+    refresh_token: str = Field(
+        ...,
+        description="Flutter reads from response body. Web ignores this from response body because its in HttpOnly cookie. Send in request body: refresh_token=<token>"
+    )
     token_type: str = "bearer"
     role: str
     user_id: UUID
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class RefreshTokenSchema(BaseModel):
+    refresh_token: str = Field(
+        ...,
+        description="Flutter: send refresh token in request body"
+    )

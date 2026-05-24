@@ -31,6 +31,7 @@ class Security:
     @staticmethod
     def create_access_token(
         subject: str,  # uuid
+        role: str,
         expires_delta: Optional[timedelta] = None
     ) -> str:
 
@@ -40,6 +41,8 @@ class Security:
 
         payload = {
             "sub": str(subject),
+            "type": "access",
+            "role": role,
             # issued at time
             "iat": int(datetime.now(timezone.utc).timestamp()),
             "exp": int(expire.timestamp()),  # expiration time
@@ -63,6 +66,7 @@ class Security:
 
         payload = {
             "sub": str(subject),
+            "type": "refresh",
             "iat": int(datetime.now(timezone.utc).timestamp()),
             "exp": int(expire.timestamp()),
         }
@@ -80,19 +84,31 @@ class Security:
             return None
 
         try:
-            # returns the payload (sub, iat, exp)
-            return jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM])
+            # returns the payload (sub, type, iat, exp)
+            payload = jwt.decode(
+                token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM])
+
+            # reject refresh tokens used as access tokens
+            if payload.get("type") != "access":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token type",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            return payload
         except ExpiredSignatureError:
-            logger.error("Expired token")
+            logger.error("Access Token Expired")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         except JWTError as e:
+            logger.error(f"Invalid Token: {e}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=str(e),
-                headers={"www-Authentication": "Bearer"},
+                detail="Invalid Token",
+                headers={"WWW-Authenticate": "Bearer"},
             )
 
     # decode refresh token
@@ -102,17 +118,29 @@ class Security:
             return None
 
         try:
+            payload = jwt.decode(
+                token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM])
             # returns the payload (sub, iat, exp)
-            return jwt.decode(token, settings.SECRET_KEY.get_secret_value(), algorithms=[settings.ALGORITHM])
+
+            # reject access tokens used as refresh tokens
+            if payload.get("type") != "refresh":
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Invalid token type",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+            return payload
         except ExpiredSignatureError:
-            logger.error("Expired refresh token")
+            logger.error("Refresh token expired")
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh Token expired",
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Refresh Token expired. Please login again",
                 headers={"WWW-Authenticate": "Bearer"},
             )
         except JWTError as e:
+            logger.error(f"Invalid Token: {e}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
-                detail=str(e),
-                headers={"www-Authentication": "Bearer"},
+                detail="Invalid refresh token",
+                headers={"WWW-Authenticate": "Bearer"},
             )
