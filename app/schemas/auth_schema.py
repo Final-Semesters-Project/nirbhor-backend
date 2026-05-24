@@ -1,3 +1,4 @@
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field
 import re
 from uuid import UUID
@@ -7,6 +8,8 @@ def validate_phone(phone: str) -> str:
     """Validates Bangladeshi phone numbers: 01XXXXXXXXX"""
     pattern = r'^01[3-9]\d{8}$'
     if not re.match(pattern, phone):
+        logger.error(
+            f"Invalid phone number: {phone}. Must be a Bangladeshi phone number")
         raise ValueError(
             "Invalid Bangladeshi phone number. Must be 11 digits starting with 01")
     return phone
@@ -20,7 +23,7 @@ class RegistrationBaseSchema(BaseModel):
     )
     password: str = Field(
         ...,
-        description="Password must be at least 8 characters", min_length=8
+        description="Password must be at least 8 characters"
     )
 
     @field_validator("phone")
@@ -32,6 +35,7 @@ class RegistrationBaseSchema(BaseModel):
     @classmethod
     def validate_password(cls, v: str) -> str:
         if len(v) < 8:
+            logger.error("Password must be at least 8 characters")
             raise ValueError("Password must be at least 8 characters")
         return v
 

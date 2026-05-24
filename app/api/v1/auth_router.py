@@ -15,7 +15,7 @@ router = APIRouter(prefix="/auth", tags=["Authentication"])
 @router.post(
     "/register/seeker",
     response_model=AuthResponseSchema,
-    summary="Register a new seeker account",
+    summary="Register a new seeker account"
 )
 async def register_seeker(
     data: SeekerRegisterSchema,
@@ -24,6 +24,8 @@ async def register_seeker(
 ):
     try:
         return await AuthService.register_seeker(data=data, db=db, response=response, device_info=None)
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Seeker registration failed: {e}")
         raise HTTPException(
