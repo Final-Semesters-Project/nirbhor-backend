@@ -14,8 +14,8 @@ class Settings(BaseSettings):
 
     SECRET_KEY: SecretStr
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    REFRESH_TOKEN_EXPIRE_MINUTES: int = 604800
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 120
+    REFRESH_TOKEN_EXPIRE_MINUTES: int = 864000
 
     APP_ENV: str
     STAGING_API_KEY: SecretStr | None = None
