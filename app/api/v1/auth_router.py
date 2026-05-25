@@ -43,7 +43,7 @@ async def register_seeker(
 
 @router.post(
     "/register/provider",
-    # response_model=AuthResponseSchema,
+    response_model=AuthResponseSchema,
     summary="Register a new provider account(Transaction = user + profile)"
 )
 async def register_provider(
