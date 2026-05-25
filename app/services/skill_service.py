@@ -1,5 +1,9 @@
 from loguru import logger
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.exceptions import DomainIntegrityError
+from app.core.i18n import t
+from app.core.integrity_error_parser import parse_integrity_error
 from app.models.skill_model import Skill
 from app.repositories.skill_repository import SkillRepository
 from app.schemas.skill_schema import SkillCreateSchema
@@ -12,6 +16,7 @@ class SkillService:
     async def create_skill(
         data: SkillCreateSchema,
         db: AsyncSession,
+        lang: str
     ) -> dict:
         # create an instance of SkillRepository
         skill_repo = SkillRepository(db)
@@ -25,7 +30,7 @@ class SkillService:
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="Skill already exists",
+                detail=t("existing_skill", lang),
             )
 
         # TODO: check if category exists
@@ -48,12 +53,18 @@ class SkillService:
             return {
                 "message": "Skill created successfully",
             }
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            readable = parse_integrity_error(raw, lang)
+            logger.error(f"IntegrityError in skill creation: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            logger.error(f"Seeker registration failed: {e}")
+            logger.error(f"Unexpected error in provider registration: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Registration failed. Please try again.",
+                detail=t("skill_creation_failed", lang),
             )
