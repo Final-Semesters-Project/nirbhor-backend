@@ -16,7 +16,8 @@ def validate_phone(phone: str) -> str:
 
 
 class RegistrationBaseSchema(BaseModel):
-    name: str
+    name_en: str
+    name_bn: str
     phone: str = Field(
         ...,
         description="Phone number must start with 01[3-9] (BD only)"
@@ -49,16 +50,19 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
     latitude: float               # seeker sends coordinates
     longitude: float
     working_radius_km: int = Field(
-        ..., gt=0, le=4,
+        ...,
         description="Working radius must be between 1 and 5 km"
     )
     has_smartphone: bool
+    photo_url: str | None = None
+    nid_url: str | None = None
 
     @field_validator("working_radius_km")
     @classmethod
     def validate_radius(cls, v: int) -> int:
-        if v < 1 or v > 10:
-            raise ValueError("Working radius must be between 1 and 10 km")
+        if v < 1 or v > 5:
+            logger.error("Working radius must be between 1 and 5 km")
+            raise ValueError("Working radius must be between 1 and 5 km")
         return v
 
 

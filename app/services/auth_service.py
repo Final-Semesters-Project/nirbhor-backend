@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status, Response
 from loguru import logger
+from app.repositories.provider_repository import ProviderRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_session_repository import UserSessionRepository
 from app.schemas.auth_schema import AuthResponseSchema, ProviderRegisterSchema, SeekerRegisterSchema
@@ -87,7 +88,7 @@ class AuthService:
             )
 
         try:
-            # create user
+            # create user, create method comes from BaseRepository
             user = await user_repo.create(
                 phone_en=data.phone,
                 password_hash=Security.hash_password(data.password),
@@ -132,7 +133,7 @@ class AuthService:
 
         # Create an instance of UserRepository
         user_repo = UserRepository(db)
-        # provider_repo = ProviderRepository(db)
+        provider_repo = ProviderRepository(db)
 
         # business rule: phone must be unique
         existing = await user_repo.get_by_phone(data.phone)
@@ -143,14 +144,31 @@ class AuthService:
             )
 
         try:
-            # create user
+            # create user, create method comes from BaseRepository
             user = await user_repo.create(
                 phone_en=data.phone,
                 password_hash=Security.hash_password(data.password),
-                role=Role.SEEKER,
+                role=Role.PROVIDER,
             )
 
-            # create and store tokens            # Web → access token in response body + refresh token in HttpOnly cookie
+            # create provider profile
+            await provider_repo.create_profile(
+                name_en=data.name_en,
+                name_bn=data.name_bn,
+                has_smartphone=data.has_smartphone,
+                latitude=data.latitude,
+                longitude=data.longitude,
+                working_radius_km=data.working_radius_km,
+                user_id=user.id,
+                photo_url=data.photo_url,
+                nid_url=data.nid_url,
+            )
+
+            # TODO: and FIXME: add skills table first, otherwise data can not be inserted
+            await provider_repo.add_skills(user.id, data.skill_ids)
+
+            # create and store tokens
+            # Web → access token in response body + refresh token in HttpOnly cookie
             # Flutter → access token + refresh token in response body
             result = await AuthService._create_tokens_and_session(
                 user_id=user.id,
@@ -161,7 +179,6 @@ class AuthService:
             )
 
             await db.commit()
-            await db.refresh(user)
 
             logger.success(f"Seeker registered: {user.id}")
             return result
@@ -169,7 +186,7 @@ class AuthService:
             raise
         except Exception as e:
             await db.rollback()
-            logger.error(f"Seeker registration failed: {e}")
+            logger.error(f"Provider registration failed: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail="Registration failed. Please try again.",
