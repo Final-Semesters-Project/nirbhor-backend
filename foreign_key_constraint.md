@@ -2,6 +2,11 @@
 not passing a valid skill_id:
  ```Provider registration failed: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.ForeignKeyViolationError'>: insert or update on table "provider_skill_links" violates foreign key constraint "provider_skill_links_skill_id_fkey"```
 
+2. Error for skill table:
+category id f_key doesn't exists
+Seeker registration failed: (sqlalchemy.dialects.postgresql.asyncpg.IntegrityError) <class 'asyncpg.exceptions.ForeignKeyViolationError'>: insert or update on table "skills" violates foreign key constraint "skills_category_id_fkey"
+
+
 # Integrity error parser
 
 ```python

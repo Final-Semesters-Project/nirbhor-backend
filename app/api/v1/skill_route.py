@@ -1,0 +1,31 @@
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from loguru import logger
+from sqlalchemy.ext.asyncio import AsyncSession
+from app.db.session import get_db_session
+from app.schemas.skill_schema import (
+    SkillCreateSchema
+)
+from app.services.skill_service import SkillService
+
+router = APIRouter(prefix="/skill", tags=["Skill Management"])
+
+
+@router.post(
+    "/create",
+    response_model=dict,
+    summary="Create a new skill",
+)
+async def create_new_skill(
+    data: SkillCreateSchema,
+    db: AsyncSession = Depends(get_db_session),
+):
+    try:
+        return await SkillService.create_skill(data=data, db=db)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Skill creation failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Skill creation failed. Please try again.",
+        )

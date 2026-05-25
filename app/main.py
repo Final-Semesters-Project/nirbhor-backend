@@ -1,4 +1,5 @@
 from app.api.v1.auth_router import router as auth_router
+from app.api.v1.skill_route import router as skill_router
 from fastapi import FastAPI, Depends
 from loguru import logger
 from sqlalchemy import select, literal
@@ -53,6 +54,7 @@ async def root():
 
 
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(skill_router, prefix="/api/v1")
 
 
 # crete a router to check db health using select 1
