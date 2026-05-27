@@ -29,6 +29,7 @@ class SkillService:
         )
 
         if existing:
+            logger.error(f"Skill {data.name_en} already exists")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=t("existing_skill", lang),
@@ -36,6 +37,7 @@ class SkillService:
 
         category = await db.get(Category, data.category_id)
         if not category:
+            logger.error(f"Category {data.category_id} does not exist")
             raise HTTPException(
                 status_code=400,
                 detail=t("category_exists", lang),

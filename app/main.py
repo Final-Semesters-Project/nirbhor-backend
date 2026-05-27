@@ -4,7 +4,7 @@ from app.api.v1.skill_router import router as skill_router
 from app.api.v1.category_router import router as category_router
 from fastapi import FastAPI, Request, status
 from app.core.config import settings
-from app.core.exceptions import DomainIntegrityError
+from app.core.exceptions import DomainIntegrityError, register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
 
@@ -50,6 +50,10 @@ if ENV == "staging" and settings.STAGING_API_KEY is not None:
 @app.head("/")
 async def root():
     return {"status": "awake"}
+
+
+# register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
+register_exception_handlers(app)
 
 
 # Domain Integrity Error catch in every route
