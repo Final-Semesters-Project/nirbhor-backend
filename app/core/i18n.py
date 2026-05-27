@@ -1,0 +1,138 @@
+from typing import Type, TypeVar
+
+from fastapi import Depends, Request
+from loguru import logger
+from pydantic import BaseModel
+# Translation Dictionary for messages
+
+MESSAGES = {
+    "en": {
+        "registration_failed": "Registration failed. Please try again.",
+        "phone_number_exists": "An account with this phone number already exists.",
+        "invalid_phone_number": "Invalid Bangladeshi phone number. Must be 11 digits starting with 01.",
+        "password_too_short": "Password must be at least 8 characters",
+        "invalid_working_radius": "Working radius must be between 1 and 5 km",
+        "skill_creation_failed": "Skill creation failed. Please try again.",
+        "skill_not_found.": "Skill not found.",
+        "invalid_skill": "One or more selected skills do not exist.",
+        "invalid_category": "Selected category does not exist.",
+        "user_not_found": "User not found.",
+        "invalid_credentials": "Invalid phone number or password.",
+        "token_expired": "Session expired. Please login again.",
+        "account_suspended": "Your account has been suspended.",
+        "fk_violation": "Referenced record does not exist.",
+        "unique_violation": "A record with this value already exists.",
+        "integrity_error": "Data integrity error. Please check your input.",
+        "existing_skill": "Skill already exists.",
+        "booking_not_found": "Booking not found.",
+        "reported_user_not_found": "Reported user not found.",
+        "reporter_not_found": "Reporter not found.",
+        "provider_not_found": "Provider not found.",
+        "seeker_not_found": "Seeker not found.",
+        "team_leader_not_found": "Team leader not found.",
+        "booking_review_not_found": "Booking for review not found.",
+        "reviewee_not_found": "Reviewee not found.",
+        "reviewer_not_found": "Reviewer not found.",
+        "bookings_provider_not_found": "The service provider for this booking could not be found.",
+        "bookings_seeker_not_found": "The service seeker for this booking could not be found.",
+        "bookings_skill_not_found": "The skill for this booking could not be found.",
+        "bookings_team_not_found": "The team for this booking could not be found.",
+        "fcm_token_user_not_found": "The user for this fcm token could not be found.",
+        "duplicate_review_error": "You have already reviewed this booking.",
+        "duplicate_fcm_token_error": "This device is already registered.",
+        "duplicate_refresh_token_error": "This token is already used.",
+        "duplicate_version_platform_key_error": "This version platform key is already used.",
+
+    },
+    "bn": {
+        "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
+        "phone_number_exists": "এই ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে।",
+        "invalid_phone": "ভুল বাংলাদেশী ফোন নম্বর। অবশ্যই ০১ দিয়ে শুরু হওয়া ১১ ডিজিটের হতে হবে।",
+        "password_too_short": "পাসওয়ার্ডটি কমপক্ষে ৮ অক্ষরের হতে হবে।",
+        "invalid_working_radius": "কাজের পরিধি অবশ্যই ১ থেকে ৫ কিলোমিটারের মধ্যে হতে হবে।",
+        "skill_creation_failed": "দক্ষতা তৈরি করা সম্ভব হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
+        "skill_not_found.": "দক্ষতা খুঁজে পাওয়া যায়নি।",
+        "invalid_skill": "এক বা একাধিক দক্ষতা বিদ্যমান নেই।",
+        "invalid_category": "নির্বাচিত বিভাগ বিদ্যমান নেই।",
+        "user_not_found": "ব্যবহারকারী পাওয়া যায়নি।",
+        "invalid_credentials": "ভুল ফোন নম্বর বা পাসওয়ার্ড।",
+        "token_expired": "সেশন মেয়াদ শেষ। আবার লগইন করুন।",
+        "account_suspended": "আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
+        "fk_violation": "সংশ্লিষ্ট রেকর্ড বিদ্যমান নেই।",
+        "unique_violation": "এই মানের একটি রেকর্ড ইতিমধ্যে বিদ্যমান।",
+        "integrity_error": "ডেটা ত্রুটি। আপনার ইনপুট পরীক্ষা করুন।",
+        "existing_skill": "এই দক্ষতা ইতিমধ্যে বিদ্যমান।",
+        "booking_not_found": "বুকিং পাওয়া যায়নি।",
+        "reported_user_not_found": "রিপোর্ট করা ব্যবহারকারীকে খুঁজে পাওয়া যায়নি।",
+        "reporter_not_found": "প্রতিবেদককে খুঁজে পাওয়া যায়নি।",
+        "provider_not_found": "সরবরাহকারী খুঁজে পাওয়া যায়নি।",
+        "seeker_not_found": "অনুসন্ধানকারী খুঁজে পাওয়া যায়নি।",
+        "team_leader_not_found": "দলনেতা খুঁজে পাওয়া যায়নি।",
+        "booking_review_not_found": "পর্যালোচনার জন্য বুকিং পাওয়া যায়নি।",
+        "reviewee_not_found": "পর্যালোচনাকারীকে খুঁজে পাওয়া যায়নি।",
+        "reviewer_not_found": "পর্যালোচককে খুঁজে পাওয়া যায়নি।",
+        "bookings_provider_not_found": "এই বুকিংয়ের জন্য পরিষেবা প্রদানকারীকে খুঁজে পাওয়া যায়নি।",
+        "bookings_seeker_not_found": "এই বুকিংয়ের জন্য পরিষেবা গ্রহণকারীকে খুঁজে পাওয়া যায়নি।",
+        "bookings_skill_not_found": "এই বুকিংয়ের জন্য প্রয়োজনীয় দক্ষতা খুঁজে পাওয়া যায়নি।",
+        "bookings_team_not_found": "এই বুকিংয়ের জন্য টিমটিকে খুঁজে পাওয়া যায়নি।",
+        "fcm_token_user_not_found": "এই এফসিএম টোকেনের ব্যবহারকারীকে খুঁজে পাওয়া যায়নি।",
+        "duplicate_review_error": "আপনি ইতিমধ্যে এই বুকিংয়ের রিভিউ দিয়েছেন।",
+        "duplicate_fcm_token_error": "এই ডিভাইসটি ইতিমধ্যে নিবন্ধিত।",
+        "duplicate_refresh_token_error": "এই টোকেনটি ইতিমধ্যে ব্যবহৃত হয়েছে।",
+        "duplicate_version_platform_key_error": "এই সংস্করণের প্ল্যাটফর্ম কী ইতিমধ্যেই ব্যবহৃত হয়েছে।",
+    }
+}
+
+# =========================== Translation ===========================
+
+
+def get_lang(request: Request) -> str:
+    lang = request.headers.get("Accept-Language", "en")
+    logger.info(f"Accept-Language: {lang}")
+    return "bn" if lang.startswith("bn") else "en"
+
+
+def t(key: str, lang: str) -> str:
+    """Translate a message key to the given language. Falls back to English."""
+    return MESSAGES.get(lang, MESSAGES["en"]).get(key, MESSAGES["en"].get(key, key))
+
+
+"""
+# step 1: get the language dict
+# if lang="bn" → returns MESSAGES["bn"]
+# if lang="xyz" (unknown) → falls back to MESSAGES["en"]
+lang_dict = MESSAGES.get(lang, MESSAGES["en"])
+
+# step 2: get the message for this key from that language dict
+# if key exists in bn dict → returns Bangla message
+# if key doesn't exist in bn dict → falls back to English message
+#   MESSAGES["en"].get(key, key) means:
+#   if key exists in English → return English message
+#   if key doesn't even exist in English → return the key itself as last resort
+message = lang_dict.get(key, MESSAGES["en"].get(key, key))
+"""
+
+
+# TODO: Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
+T = TypeVar("T", bound=BaseModel)
+
+
+def make_validated_body(schema_class: Type[T]):
+    """
+    Factory that returns a FastAPI dependency which:
+    1. Reads raw request body
+    2. Validates it using the given schema
+    3. Passes language context so validators can return translated errors
+
+    Usage:
+        data: SeekerRegisterSchema = Depends(make_validated_body(SeekerRegisterSchema))
+    """
+    async def dependency(
+        request: Request,
+        lang: str = Depends(get_lang),
+    ) -> T:
+        raw_body = await request.json()
+        # model_validate with context passes lang into field_validators
+        return schema_class.model_validate(raw_body, context={"lang": lang})
+
+    return dependency

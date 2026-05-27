@@ -1,5 +1,8 @@
 from fastapi import HTTPException, status, Response
 from loguru import logger
+from app.core.exceptions import DomainIntegrityError
+from app.core.i18n import MESSAGES, t
+from app.core.integrity_error_parser import parse_integrity_error
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_session_repository import UserSessionRepository
@@ -11,6 +14,7 @@ from datetime import timedelta
 from app.core.config import settings
 import uuid
 from datetime import datetime, timezone
+from sqlalchemy.exc import IntegrityError
 
 
 class AuthService:
@@ -73,6 +77,7 @@ class AuthService:
         data: SeekerRegisterSchema,
         db: AsyncSession,
         response: Response,
+        lang: str,
         device_info: str | None = None,
     ) -> AuthResponseSchema:
 
@@ -84,7 +89,7 @@ class AuthService:
         if existing:
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this phone number already exists",
+                detail=MESSAGES[lang]["phone_number_exists"],
             )
 
         try:
@@ -111,23 +116,29 @@ class AuthService:
 
             logger.success(f"Seeker registered: {user.id}")
             return result
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            readable = parse_integrity_error(raw, lang)
+            logger.error(f"IntegrityError in seeker registration: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            logger.error(f"Seeker registration failed: {e}")
+            logger.error(f"Unexpected error in seeker registration: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Registration failed. Please try again.",
+                detail=t("registration_failed", lang),
             )
 
     # register provider
-
     @staticmethod
     async def register_provider(
         data: ProviderRegisterSchema,
         db: AsyncSession,
         response: Response,
+        lang: str,
         device_info: str | None = None,
     ) -> AuthResponseSchema:
 
@@ -182,12 +193,18 @@ class AuthService:
 
             logger.success(f"Seeker registered: {user.id}")
             return result
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            readable = parse_integrity_error(raw, lang)
+            logger.error(f"IntegrityError in provider registration: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except HTTPException:
             raise
         except Exception as e:
             await db.rollback()
-            logger.error(f"Provider registration failed: {e}")
+            logger.error(f"Unexpected error in provider registration: {e}")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Registration failed. Please try again.",
+                detail=t("registration_failed", lang),
             )

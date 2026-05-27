@@ -1,10 +1,9 @@
+from fastapi.responses import JSONResponse
 from app.api.v1.auth_router import router as auth_router
-from fastapi import FastAPI, Depends
-from loguru import logger
-from sqlalchemy import select, literal
+from app.api.v1.skill_router import router as skill_router
+from fastapi import FastAPI, Request, status
 from app.core.config import settings
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_db_session
+from app.core.exceptions import DomainIntegrityError
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
 
@@ -52,7 +51,17 @@ async def root():
     return {"status": "awake"}
 
 
+# Domain Integrity Error catch in every route
+@app.exception_handler(DomainIntegrityError)
+async def domain_integrity_error_handler(request: Request, exc: DomainIntegrityError):
+    return JSONResponse(
+        status_code=status.HTTP_409_CONFLICT,
+        content={"detail": exc.error_message},
+    )
+
+
 app.include_router(auth_router, prefix="/api/v1")
+app.include_router(skill_router, prefix="/api/v1")
 
 
 # crete a router to check db health using select 1
