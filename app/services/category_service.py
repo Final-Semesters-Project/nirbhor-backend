@@ -27,6 +27,7 @@ class CategoryService:
         )
 
         if existing:
+            logger.error(f"Category {data.name_en} already exists")
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail=t("category_exists", lang),
