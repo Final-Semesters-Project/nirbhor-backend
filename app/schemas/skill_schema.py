@@ -13,3 +13,5 @@ class SkillCreateSchema(SkillBaseSchema):
 
 class SkillResponseSchema(BaseModel):
     pass
+
+    model_config = ConfigDict(from_attributes=True)
