@@ -26,7 +26,7 @@ async def create_new_skill(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Skill creation failed: {e}")
+        logger.critical(f"Skill creation failed: {e}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=MESSAGES[lang]["skill_creation_failed"],
