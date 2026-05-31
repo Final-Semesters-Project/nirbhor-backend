@@ -17,6 +17,7 @@ def validate_phone(phone: str, info: ValidationInfo) -> str:
 
 def validate_password(password: str, info: ValidationInfo) -> str:
     if len(password) < 8:
+        logger.error("Password must be at least 8 characters")
         lang = info.context.get("lang", "en") if info.context else "en"
         raise ValueError(t("password_too_short", lang))
     return password
@@ -24,6 +25,7 @@ def validate_password(password: str, info: ValidationInfo) -> str:
 
 def validate_radius(radius: int, info: ValidationInfo) -> int:
     if radius < 1 or radius > 5:
+        logger.error("Working radius must be between 1 and 5 km")
         lang = info.context.get("lang", "en") if info.context else "en"
         raise ValueError(t("invalid_radius", lang))
     return radius

@@ -4,6 +4,7 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 
+# Domain Integrity Error: Catches Database Integrity Errors & shows a readable error message
 class DomainIntegrityError(Exception):
     def __init__(self, error_message: str, raw_error: str | None = None):
         self.error_message = error_message
@@ -14,6 +15,7 @@ class DomainIntegrityError(Exception):
         return self.error_message
 
 
+# extract error messages from pydantic validation errors(422 Unprocessable Content)
 def register_exception_handlers(app):
     """Register all global exception handlers on the FastAPI app."""
 
@@ -45,6 +47,7 @@ def register_exception_handlers(app):
             }
         )
 
+    # normalize all HTTP exceptions
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
         request: Request,

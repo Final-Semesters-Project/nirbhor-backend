@@ -34,14 +34,15 @@ class CategoryService:
             )
 
         try:
-            category = await category_repo.create(
+            await category_repo.create(
                 name_en=data.name_en,
                 name_bn=data.name_bn
             )
             await db.commit()
 
+            # message = t("category_created", lang)
             return {
-                "message": "Category created successfully",
+                "message": t("category_created", lang),
             }
 
         except IntegrityError as e:

@@ -81,6 +81,12 @@ class AuthService:
         device_info: str | None = None,
     ) -> AuthResponseSchema:
 
+        # re-validate with language context so error messages are translated
+        data = SeekerRegisterSchema.model_validate(
+            data.model_dump(),
+            context={"lang": lang}
+        )
+
         # Create an instance of UserRepository
         user_repo = UserRepository(db)
 
@@ -142,6 +148,12 @@ class AuthService:
         device_info: str | None = None,
     ) -> AuthResponseSchema:
 
+        # re-validate with language context so error messages are translated
+        data = ProviderRegisterSchema.model_validate(
+            data.model_dump(),
+            context={"lang": lang}
+        )
+
         # Create an instance of UserRepository
         user_repo = UserRepository(db)
         provider_repo = ProviderRepository(db)
@@ -175,7 +187,6 @@ class AuthService:
                 nid_url=data.nid_url,
             )
 
-            # TODO: and FIXME: add skills table first, otherwise data can not be inserted
             await provider_repo.add_skills(user.id, data.skill_ids)
 
             # create and store tokens
