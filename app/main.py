@@ -24,8 +24,6 @@ async def lifespan(app: FastAPI):
     # runs on shutdown, after all requests
 
 
-# app = FastAPI(lifespan=lifespan)
-
 # check if in production or development
 ENV = settings.APP_ENV or "development"
 

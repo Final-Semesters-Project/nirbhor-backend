@@ -2,26 +2,8 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field, ValidationInfo
 import re
 from uuid import UUID
-from app.core.schema_validators import validate_phone, validate_password, validate_radius
+from app.core.schema_validators import validate_phone, validate_password, validate_radius, validate_name
 from app.core.i18n import MESSAGES
-
-
-# def validate_phone(phone: str, info: ValidationInfo) -> str:
-#     """Validates Bangladeshi phone numbers: 01XXXXXXXXX"""
-#     pattern = r'^01[3-9]\d{8}$'
-#     if not re.match(pattern, phone):
-#         # 1. Safely extract lang from context, defaulting to English if missing
-#         lang = "en"
-#         if info.context and "lang" in info.context:
-#             lang = info.context["lang"]
-
-#         # 2. Log in English for developers
-#         logger.error(f"Invalid phone number schema check: {phone}")
-
-#         raise ValueError(
-#             MESSAGES[lang]["invalid_phone_number"]
-#         )
-#     return phone
 
 
 class RegistrationBaseSchema(BaseModel):
@@ -44,11 +26,17 @@ class RegistrationBaseSchema(BaseModel):
     @field_validator("password", mode="after")
     @classmethod
     def validate_password(cls, v: str, info: ValidationInfo) -> str:
-        # if len(v) < 8:
-        #     logger.error("Password must be at least 8 characters")
-        #     raise ValueError("Password must be at least 8 characters")
-        # return v
         return validate_password(v, info=info)
+
+    @field_validator("name_en", mode="after")
+    @classmethod
+    def validate_en_name(cls, v: str, info: ValidationInfo) -> str:
+        return validate_name(v, info=info)
+
+    @field_validator("name_bn", mode="after")
+    @classmethod
+    def validate_bn_name(cls, v: str, info: ValidationInfo) -> str:
+        return validate_name(v, info=info)
 
 
 class SeekerRegisterSchema(RegistrationBaseSchema):
