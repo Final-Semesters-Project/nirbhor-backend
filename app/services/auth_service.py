@@ -1,4 +1,5 @@
 from fastapi import HTTPException, status, Response
+from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
 from app.core.exceptions import DomainIntegrityError
 from app.core.i18n import MESSAGES, t
@@ -219,3 +220,53 @@ class AuthService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=t("registration_failed", lang),
             )
+
+    @staticmethod
+    async def password_login(
+        response: Response,
+        username: str,
+        password: str,
+        db: AsyncSession,
+        lang: str,
+        device_info: str | None = None,
+    ) -> AuthResponseSchema:
+        user_repo = UserRepository(db)
+
+        # 1. Find user by phone
+        user = await user_repo.get_by_phone(username)
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("invalid_credentials", lang),
+            )
+
+        # 2. Verify password
+        if not Security.verify_password(password, user.password_hash):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("invalid_credentials", lang),
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
+        # 3. Check is_active
+        if not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=t("account_suspended", lang),
+            )
+        # 4. Create new access token, refresh token, Store refresh token, Set refresh token in HttpOnly cookie
+        # Web → access token in response body + refresh token in HttpOnly cookie
+        # Flutter → access token + refresh token in response body
+        result = await AuthService._create_tokens_and_session(
+            user_id=user.id,
+            role=user.role.value,
+            response=response,
+            db=db,
+            device_info=device_info,
+        )
+
+        await db.commit()
+        logger.success(f"User logged in: {user.id} | role: {user.role.value}")
+
+        return result

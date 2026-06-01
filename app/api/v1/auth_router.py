@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainIntegrityError
@@ -13,9 +14,8 @@ from app.services.auth_service import AuthService
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
+
 # Extract device info from User-Agent header for session tracking
-
-
 def get_device_info(request: Request) -> str | None:
     return request.headers.get("User-Agent")
 
@@ -62,8 +62,6 @@ async def register_seeker(
 )
 async def register_provider(
     response: Response,
-    # data: ProviderRegisterSchema = Depends(
-        # make_validated_body(ProviderRegisterSchema)),
     data: ProviderRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
     device_info: str | None = Depends(get_device_info),
@@ -86,4 +84,30 @@ async def register_provider(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=t("registration_failed", lang),
+        )
+
+
+# login route
+@router.post(
+    "/login",
+    response_model=AuthResponseSchema,
+    status_code=status.HTTP_200_OK,
+    summary="Login with phone number and password",
+)
+async def password_login(
+    response: Response,
+    form_data: OAuth2PasswordRequestForm = Depends(),
+    db: AsyncSession = Depends(get_db_session),
+    device_info: str | None = Depends(get_device_info),
+    lang: str = Depends(get_lang),
+):
+    try:
+        return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Password Login failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=t("login_failed", lang),
         )
