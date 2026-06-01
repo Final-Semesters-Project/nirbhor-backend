@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.exceptions import DomainIntegrityError
 from app.core.i18n import MESSAGES, get_lang, t, make_validated_body
 from app.db.session import get_db_session
 from app.schemas.auth_schema import (
@@ -22,6 +23,7 @@ def get_device_info(request: Request) -> str | None:
 @router.post(
     "/register/seeker",
     response_model=AuthResponseSchema,
+    status_code=status.HTTP_201_CREATED,
     summary="Register a new seeker account"
 )
 async def register_seeker(
@@ -37,6 +39,13 @@ async def register_seeker(
         return await AuthService.register_seeker(data=data, db=db, response=response, device_info=device_info, lang=lang)
     except HTTPException:
         raise
+    except DomainIntegrityError as de:
+        logger.error(
+            f"Domain Integrity Error: Seeker registration failed: {de}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("registration_failed", lang),
+        )
     except Exception as e:
         logger.error(f"Seeker registration failed: {e}")
         raise HTTPException(
@@ -48,6 +57,7 @@ async def register_seeker(
 @router.post(
     "/register/provider",
     response_model=AuthResponseSchema,
+    status_code=status.HTTP_201_CREATED,
     summary="Register a new provider account(Transaction = user + profile)"
 )
 async def register_provider(
@@ -64,6 +74,13 @@ async def register_provider(
             data=data, db=db, response=response, device_info=device_info, lang=lang)
     except HTTPException:
         raise
+    except DomainIntegrityError as de:
+        logger.error(
+            f"Domain Integrity Error: Provider registration failed: {de}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("registration_failed", lang),
+        )
     except Exception as e:
         logger.error(f"Provider registration failed: {e}")
         raise HTTPException(

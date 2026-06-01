@@ -29,3 +29,11 @@ def validate_radius(radius: int, info: ValidationInfo) -> int:
         lang = info.context.get("lang", "en") if info.context else "en"
         raise ValueError(t("invalid_radius", lang))
     return radius
+
+
+def validate_name(name: str, info: ValidationInfo) -> str:
+    if not name or not name.strip():
+        logger.error("Name is required")
+        lang = info.context.get("lang", "en") if info.context else "en"
+        raise ValueError(t("name_required", lang))
+    return name.strip()

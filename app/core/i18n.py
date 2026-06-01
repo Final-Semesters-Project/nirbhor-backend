@@ -48,6 +48,7 @@ MESSAGES = {
         "duplicate_version_platform_key_error": "This version platform key is already used.",
         "invalid_radius": "Invalid working radius. Value must be between 1 and 5.",
         "category_created": "Category created successfully.",
+        "name_required": "Name is required.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -91,6 +92,7 @@ MESSAGES = {
         "duplicate_version_platform_key_error": "এই সংস্করণের প্ল্যাটফর্ম কী ইতিমধ্যেই ব্যবহৃত হয়েছে।",
         "invalid_radius": "কাজের পরিধি সঠিক নয়। মানটি ১ থেকে ৫ এর মধ্যে হতে হবে।",
         "category_created": "ক্যাটাগরি সফলভাবে তৈরি হয়েছে।",
+        "name_required": "নাম প্রয়োজনীয়।",
     }
 }
 
