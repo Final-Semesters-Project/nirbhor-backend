@@ -21,7 +21,7 @@ MESSAGES = {
         "category_exists": "Category already exists.",
         "category_does_not_exists": "Category does not exists.",
         "user_not_found": "User not found.",
-        "invalid_credentials": "Invalid phone number or password.",
+        "invalid_credentials": "Invalid login credentials.",
         "token_expired": "Session expired. Please login again.",
         "account_suspended": "Your account has been suspended.",
         "fk_violation": "Referenced record does not exist.",
@@ -49,6 +49,8 @@ MESSAGES = {
         "invalid_radius": "Invalid working radius. Value must be between 1 and 5.",
         "category_created": "Category created successfully.",
         "name_required": "Name is required.",
+        "login_failed": "Login failed. Check your credentials.",
+        "account_suspended": "Your account has been suspended.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -65,7 +67,7 @@ MESSAGES = {
         "invalid_skill": "এক বা একাধিক দক্ষতা বিদ্যমান নেই।",
         "invalid_category": "নির্বাচিত বিভাগ বিদ্যমান নেই।",
         "user_not_found": "ব্যবহারকারী পাওয়া যায়নি।",
-        "invalid_credentials": "ভুল ফোন নম্বর বা পাসওয়ার্ড।",
+        "invalid_credentials": "ভুল লগইন ক্রেডেন্শিয়াল।",
         "token_expired": "সেশন মেয়াদ শেষ। আবার লগইন করুন।",
         "account_suspended": "আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
         "fk_violation": "সংশ্লিষ্ট রেকর্ড বিদ্যমান নেই।",
@@ -93,6 +95,8 @@ MESSAGES = {
         "invalid_radius": "কাজের পরিধি সঠিক নয়। মানটি ১ থেকে ৫ এর মধ্যে হতে হবে।",
         "category_created": "ক্যাটাগরি সফলভাবে তৈরি হয়েছে।",
         "name_required": "নাম প্রয়োজনীয়।",
+        "login_failed": "লগইন ব্যর্থ হয়েছে। ক্রেডেনশিয়ালস পরীক্ষা করুন।",
+        "account_suspended": "আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
     }
 }
 
