@@ -7,32 +7,50 @@ from app.core.config import settings
 from app.core.exceptions import DomainIntegrityError, register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
+from app.db.seed import seed_categories_and_skills
+from app.db.session import AsyncSessionLocal
+
+app_kwargs = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # runs on startup, before any requests
+    # runs once on startup
     setup_logging()
+    async with AsyncSessionLocal() as db:
+        await seed_categories_and_skills(db)
     yield
     # runs on shutdown, after all requests
 
+
+# app = FastAPI(lifespan=lifespan)
 
 # check if in production or development
 ENV = settings.APP_ENV or "development"
 
 # disable swagger and redoc in production
 if ENV == "production":
-    app = FastAPI(
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None
-    )
+    # app = FastAPI(
+    #     docs_url=None,
+    #     redoc_url=None,
+    #     openapi_url=None
+    # )
+    app_kwargs.update({
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None
+    })
 else:
-    app = FastAPI(
-        # send HttpOnly Cookies to Swagger UI
-        swagger_ui_parameters={"withCredentials": True}
-    )
+    # app = FastAPI(
+    #     # send HttpOnly Cookies to Swagger UI
+    #     swagger_ui_parameters={"withCredentials": True}
+    # )
+    app_kwargs.update({
+        "swagger_ui_parameters": {"withCredentials": True}
+    })
 
+app = FastAPI(lifespan=lifespan, **app_kwargs)
 
 # middlewares
 # 1. check for staging key if in staging (this is for frontend to test the backend server, the staging key lets the frontend access the backend but other people can't access it. Render doesn't allow deployments with custom user permissions in free tier)
@@ -69,13 +87,6 @@ app.include_router(auth_router, prefix="/api/v1")
 app.include_router(skill_router, prefix="/api/v1")
 app.include_router(category_router, prefix="/api/v1")
 
-
-# crete a router to check db health using select 1
-# @app.get("/health")
-# async def check_db(session: AsyncSession = Depends(get_db_session)):
-#     query = select(literal(1))
-#     result = await session.execute(query)
-#     return result.scalar()
 
 if __name__ == "__main__":
     import uvicorn

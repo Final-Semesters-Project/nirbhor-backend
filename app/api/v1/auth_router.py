@@ -26,8 +26,9 @@ def get_device_info(request: Request) -> str | None:
 )
 async def register_seeker(
     response: Response,
-    data: SeekerRegisterSchema = Depends(
-        make_validated_body(SeekerRegisterSchema)),
+    # data: SeekerRegisterSchema = Depends(
+    #     make_validated_body(SeekerRegisterSchema)),
+    data: SeekerRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
     device_info: str | None = Depends(get_device_info),
     lang: str = Depends(get_lang),
@@ -51,8 +52,9 @@ async def register_seeker(
 )
 async def register_provider(
     response: Response,
-    data: ProviderRegisterSchema = Depends(
-        make_validated_body(ProviderRegisterSchema)),
+    # data: ProviderRegisterSchema = Depends(
+        # make_validated_body(ProviderRegisterSchema)),
+    data: ProviderRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
     device_info: str | None = Depends(get_device_info),
     lang: str = Depends(get_lang),

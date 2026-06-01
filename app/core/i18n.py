@@ -13,11 +13,13 @@ MESSAGES = {
         "password_too_short": "Password must be at least 8 characters",
         "invalid_working_radius": "Working radius must be between 1 and 5 km",
         "skill_creation_failed": "Skill creation failed. Please try again.",
+        "skill_created": "Skill created successfully.",
         "skill_not_found.": "Skill not found.",
         "category_creation_failed": "Category creation failed. Please try again.",
         "invalid_skill": "One or more selected skills do not exist.",
         "invalid_category": "Selected category does not exist.",
         "category_exists": "Category already exists.",
+        "category_does_not_exists": "Category does not exists.",
         "user_not_found": "User not found.",
         "invalid_credentials": "Invalid phone number or password.",
         "token_expired": "Session expired. Please login again.",
@@ -44,7 +46,8 @@ MESSAGES = {
         "duplicate_fcm_token_error": "This device is already registered.",
         "duplicate_refresh_token_error": "This token is already used.",
         "duplicate_version_platform_key_error": "This version platform key is already used.",
-
+        "invalid_radius": "Invalid working radius. Value must be between 1 and 5.",
+        "category_created": "Category created successfully.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -53,9 +56,11 @@ MESSAGES = {
         "password_too_short": "পাসওয়ার্ডটি কমপক্ষে ৮ অক্ষরের হতে হবে।",
         "invalid_working_radius": "কাজের পরিধি অবশ্যই ১ থেকে ৫ কিলোমিটারের মধ্যে হতে হবে।",
         "skill_creation_failed": "দক্ষতা তৈরি করা সম্ভব হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
+        "skill_created": "দক্ষতা সফলভাবে তৈরি করা হয়েছে।",
         "category_creation_failed": "ক্যাটাগরি তৈরি করা সম্ভব হয়নি। অনুগ্রহ করে আবার চেষ্টা করুন।",
         "skill_not_found.": "দক্ষতা খুঁজে পাওয়া যায়নি।",
         "category_exists": "বিভাগটি ইতিমধ্যেই বিদ্যমান।",
+        "category_does_not_exists": "বিভাগ পাওয়া যায়নি।",
         "invalid_skill": "এক বা একাধিক দক্ষতা বিদ্যমান নেই।",
         "invalid_category": "নির্বাচিত বিভাগ বিদ্যমান নেই।",
         "user_not_found": "ব্যবহারকারী পাওয়া যায়নি।",
@@ -84,6 +89,8 @@ MESSAGES = {
         "duplicate_fcm_token_error": "এই ডিভাইসটি ইতিমধ্যে নিবন্ধিত।",
         "duplicate_refresh_token_error": "এই টোকেনটি ইতিমধ্যে ব্যবহৃত হয়েছে।",
         "duplicate_version_platform_key_error": "এই সংস্করণের প্ল্যাটফর্ম কী ইতিমধ্যেই ব্যবহৃত হয়েছে।",
+        "invalid_radius": "কাজের পরিধি সঠিক নয়। মানটি ১ থেকে ৫ এর মধ্যে হতে হবে।",
+        "category_created": "ক্যাটাগরি সফলভাবে তৈরি হয়েছে।",
     }
 }
 

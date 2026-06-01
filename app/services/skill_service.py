@@ -40,7 +40,7 @@ class SkillService:
             logger.error(f"Category {data.category_id} does not exist")
             raise HTTPException(
                 status_code=400,
-                detail=t("category_exists", lang),
+                detail=t("category_does_not_exists", lang),
             )
 
         try:
@@ -53,7 +53,7 @@ class SkillService:
             logger.success(f"Skill: {skill.name_en} created successfully")
 
             return {
-                "message": "Skill created successfully",
+                "message": t("skill_created", lang),
             }
         except IntegrityError as e:
             await db.rollback()
