@@ -34,10 +34,6 @@ class ProviderProfile(TimestampMixin, Base):
         uselist=False,
     )
 
-    name_en: Mapped[str] = mapped_column(String, nullable=False)
-
-    name_bn: Mapped[str] = mapped_column(String, nullable=False)
-
     photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
     nid_url: Mapped[str | None] = mapped_column(String, nullable=True)

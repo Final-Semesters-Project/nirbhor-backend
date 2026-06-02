@@ -12,8 +12,6 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
     async def create_profile(
         self,
         user_id: uuid.UUID,
-        name_en: str,
-        name_bn: str,
         latitude: float,
         longitude: float,
         working_radius_km: int,
@@ -27,8 +25,6 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
 
         profile = ProviderProfile(
             user_id=user_id,
-            name_en=name_en,
-            name_bn=name_bn,
             base_location=location_wkt,
             working_radius_km=working_radius_km,
             has_smartphone=has_smartphone,
@@ -49,3 +45,6 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             )
             self.db.add(link)
         await self.db.flush()
+
+    async def provider_profile_data_for_get_me(self, user_id: uuid.UUID):
+        return await self.db.get(ProviderProfile, user_id)
