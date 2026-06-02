@@ -1,5 +1,8 @@
 import uuid
+from sqlalchemy import select, func, and_
+from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.models.booking_model import Booking
 from app.models.provider_profile_model import ProviderProfile
 from app.models.provider_skill_link_model import ProviderSkillLink
 from app.repositories.base_repository import BaseRepository
@@ -48,3 +51,39 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
 
     async def provider_profile_data_for_get_me(self, user_id: uuid.UUID):
         return await self.db.get(ProviderProfile, user_id)
+
+    async def get_dashboard_data(self, user_id: uuid.UUID):
+        query = select(ProviderProfile)\
+            .options(
+                joinedload(ProviderProfile.user),
+                joinedload(ProviderProfile.skill_links).joinedload(
+                    ProviderSkillLink.skill),
+        ).where(ProviderProfile.user_id == user_id)
+
+        result = await self.db.execute(query)
+        return result.scalars().first()
+
+    async def get_total_jobs_done(self, user_id: uuid.UUID):
+        # count total jobs done by provider from bookings table where status is completed
+        query = select(func.count(Booking.id)).where(
+            and_(
+                Booking.provider_id == user_id,
+                Booking.status == "completed"
+            )
+        )
+
+        result = await self.db.execute(query)
+        return result.scalar()
+
+    # async def asdasd(self, user_id: uuid.UUID):
+    #     query = (
+    #         select(ProviderProfile)
+    #         .options(
+    #             joinedload(ProviderProfile.user),
+    #             # This fetches the link table AND the actual Skill model in one go
+    #             joinedload(ProviderProfile.skill_links).joinedload(ProviderSkillLink.skill),
+    #         )
+    #         .where(ProviderProfile.user_id == user_id)
+    #     )
+    #     result = await self.db.execute(query)
+    #     return result.scalars().first()

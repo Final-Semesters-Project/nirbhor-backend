@@ -1,48 +1,41 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
-from fastapi.security import OAuth2PasswordRequestForm
+from typing import Annotated
+
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from loguru import logger
+from pydantic import ValidationError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.dependencies import get_current_provider
 from app.core.exceptions import DomainIntegrityError
-from app.core.i18n import MESSAGES, get_lang, t, make_validated_body
+from app.core.i18n import MESSAGES, get_lang, t
 from app.db.session import get_db_session
-from app.schemas.auth_schema import (
-    SeekerRegisterSchema,
-    ProviderRegisterSchema,
-    AuthResponseSchema,
-)
-from app.services.auth_service import AuthService
+from app.models.user_model import User
+from app.services.provider_service import ProviderService
 
 router = APIRouter(prefix="/provider", tags=["Provider Management"])
 
 
-# Provider profile data
-"""
-GET /api/v1/providers/me/profile
-→ name, photo, verification level, rating, jobs done, radius, skills, ai summary
-"""
-
-
-# / me router
-"""
-# for seeker
-{
-    "user_id": "uuid",
-    "role": "SEEKER",
-    "phone": "016...",
-    "name": "Rahim",
-    "is_active": true,
-}
-
-# for provider — needs more data to render their dashboard
-{
-    "user_id": "uuid", 
-    "role": "PROVIDER",
-    "phone": "016...",
-    "name": "Karim",
-    "is_active": true,
-    "verification_level": "BASIC",
-    "is_available": true,
-    "average_rating": 4.6,
-    "working_radius_km": 5,
-}
-"""
+# Provider dashboard data
+@router.get(
+    "/dashboard",
+    summary="Get provider dashboard data",
+    status_code=status.HTTP_200_OK
+)
+async def get_provider_dashboard(
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    try:
+        return await ProviderService.get_dashboard(current_user=current_user, db=db, lang=lang)
+    except ValidationError as ve:
+        logger.critical(f"Validation error: {ve}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Validation error: {ve}",
+        )
+    except Exception as e:
+        logger.critical(f"Failed to get provider dashboard: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=t("user_not_found", lang),
+        )
