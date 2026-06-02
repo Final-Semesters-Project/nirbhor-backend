@@ -105,6 +105,8 @@ class AuthService:
                 phone_en=data.phone,
                 password_hash=Security.hash_password(data.password),
                 role=Role.SEEKER,
+                name_en=data.name_en,
+                name_bn=data.name_bn,
             )
 
             # create and store tokens
@@ -170,6 +172,8 @@ class AuthService:
         try:
             # create user, create method comes from BaseRepository
             user = await user_repo.create(
+                name_en=data.name_en,
+                name_bn=data.name_bn,
                 phone_en=data.phone,
                 password_hash=Security.hash_password(data.password),
                 role=Role.PROVIDER,
@@ -177,8 +181,6 @@ class AuthService:
 
             # create provider profile
             await provider_repo.create_profile(
-                name_en=data.name_en,
-                name_bn=data.name_bn,
                 has_smartphone=data.has_smartphone,
                 latitude=data.latitude,
                 longitude=data.longitude,

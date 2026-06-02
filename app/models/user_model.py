@@ -19,6 +19,10 @@ class Role(str, enum.Enum):
 class User(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
+    name_en: Mapped[str] = mapped_column(String, nullable=False)
+
+    name_bn: Mapped[str] = mapped_column(String, nullable=False)
+
     phone_en: Mapped[str] = mapped_column(
         String, nullable=False, unique=True, index=True)  # Login and Calls
 
