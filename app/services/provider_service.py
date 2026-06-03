@@ -1,16 +1,20 @@
+import uuid
+
 from loguru import logger
+from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainIntegrityError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
+from app.models.provider_profile_model import ProviderProfile
 from app.models.skill_model import Skill
 from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
-from app.schemas.provider_schema import ProviderDashboardSchema, SkillInfo
+from app.schemas.provider_schema import ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
 
 
 class ProviderService:
@@ -59,3 +63,54 @@ class ProviderService:
             ],
             total_jobs_done=total_jobs_done
         )
+
+    @staticmethod
+    async def update_provider_profile(
+        provider_id: uuid.UUID,
+        lang: str,
+        db: AsyncSession,
+        update_data: ProviderProfileUpdateSchema
+    ):
+        # re-validate with language context so error messages are translated
+        data = ProviderProfileUpdateSchema.model_validate(
+            update_data.model_dump(),
+            context={"lang": lang}
+        )
+
+        provider_repo = ProviderRepository(db)
+
+        # fetch the existing provider data
+        provider_instance = await provider_repo.get_by_id(provider_id)
+        if provider_instance is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=t("user_not_found", lang),
+            )
+
+        # 2. Prepare the update dictionary from the Pydantic model
+        # Use exclude_unset=True for PATCH-style partial updates
+        data_dict = update_data.model_dump(exclude_unset=True)
+
+        # handle location logic and update the data_dict
+        if "latitude" in data_dict and "longitude" in data_dict:
+            data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
+            data_dict["location_updated_at"] = func.now()
+
+        try:
+            await provider_repo.update(instance=provider_instance, **data_dict)
+            return t("profile_updated", lang)
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            readable = parse_integrity_error(raw, lang)
+            logger.error(f"IntegrityError in provider profile update: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
+        except HTTPException:
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(f"Unexpected error in provider profile update: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=t("profile_update_failed", lang),
+            )
