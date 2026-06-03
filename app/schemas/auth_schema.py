@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field, ValidationInfo
 import re
@@ -58,10 +60,6 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
     @field_validator("working_radius_km", mode="after")
     @classmethod
     def validate_radius(cls, v: int, info: ValidationInfo) -> int:
-        # if v < 1 or v > 5:
-        #     logger.error("Working radius must be between 1 and 5 km")
-        #     raise ValueError("Working radius must be between 1 and 5 km")
-        # return v
         return validate_radius(v, info=info)
 
 

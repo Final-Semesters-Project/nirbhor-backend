@@ -1,4 +1,5 @@
 from typing import Annotated
+import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from loguru import logger
@@ -9,6 +10,7 @@ from app.core.exceptions import DomainIntegrityError
 from app.core.i18n import MESSAGES, get_lang, t
 from app.db.session import get_db_session
 from app.models.user_model import User
+from app.schemas.provider_schema import ProviderProfileUpdateSchema
 from app.services.provider_service import ProviderService
 
 router = APIRouter(prefix="/provider", tags=["Provider Management"])
@@ -38,4 +40,37 @@ async def get_provider_dashboard(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=t("user_not_found", lang),
+        )
+
+# for provider dashboard page: 1 api to update the is_available status, upload nid,
+# for provider dashboard page: 1 api to get a list of skills and 1 to add that skill to provider
+
+
+@router.patch(
+    "/me/update_profile",
+    summary="Update provider profile",
+    status_code=status.HTTP_200_OK,
+)
+async def update_provider_profile(
+    update_data: ProviderProfileUpdateSchema,
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    try:
+        return await ProviderService.update_provider_profile(db=db, lang=lang, provider_id=current_user.id, update_data=update_data)
+    except HTTPException:
+        raise
+    except DomainIntegrityError as de:
+        logger.error(
+            f"Domain Integrity Error: Provider profile update failed: {de}")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=t("profile_update_failed", lang),
+        )
+    except Exception as e:
+        logger.error(f"Provider profile update failed: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=t("profile_update_failed", lang),
         )

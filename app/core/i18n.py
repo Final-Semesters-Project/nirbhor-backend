@@ -51,6 +51,9 @@ MESSAGES = {
         "name_required": "Name is required.",
         "login_failed": "Login failed. Check your credentials.",
         "account_suspended": "Your account has been suspended.",
+        "unauthorized_access": "You are not authorized to perform this action.",
+        "profile_update_failed": "Profile update failed. Please try again.",
+        "profile_updated": "Profile updated successfully.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -97,6 +100,9 @@ MESSAGES = {
         "name_required": "নাম প্রয়োজনীয়।",
         "login_failed": "লগইন ব্যর্থ হয়েছে। ক্রেডেনশিয়ালস পরীক্ষা করুন।",
         "account_suspended": "আপনার অ্যাকাউন্ট স্থগিত করা হয়েছে।",
+        "unauthorized_access": "আপনি এই কাজটি প্রদর্শন করার অনুমতি নেই।",
+        "profile_update_failed": "প্রোফাইল আপডেট ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।",
+        "profile_updated": "প্রোফাইল সফলভাবে আপডেট হয়েছে।",
     }
 }
 

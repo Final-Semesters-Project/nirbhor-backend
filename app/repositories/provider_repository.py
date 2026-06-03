@@ -26,6 +26,8 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
         # POINT(longitude latitude) — note: longitude first, this is the GIS standard
         location_wkt = f"POINT({longitude} {latitude})"
 
+        location_updated_at = func.now()
+
         profile = ProviderProfile(
             user_id=user_id,
             base_location=location_wkt,
@@ -33,6 +35,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             has_smartphone=has_smartphone,
             photo_url=photo_url,
             nid_url=nid_url,
+            location_updated_at=location_updated_at
         )
         self.db.add(profile)
         await self.db.flush()

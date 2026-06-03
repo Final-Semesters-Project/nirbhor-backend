@@ -30,7 +30,8 @@ class BaseRepository(Generic[ModelType]):
 
     async def update(self, instance: ModelType, **kwargs) -> ModelType:
         for key, value in kwargs.items():
-            setattr(instance, key, value)
+            if hasattr(instance, key):
+                setattr(instance, key, value)
         await self.db.flush()
         return instance
 

@@ -1,6 +1,7 @@
+from datetime import datetime
 import uuid
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Enum as sqlEnum, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum as sqlEnum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 import enum
@@ -71,6 +72,11 @@ class ProviderProfile(TimestampMixin, Base):
     base_location: Mapped[object] = mapped_column(
         Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
         nullable=False,
+    )
+
+    location_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
     )
 
     working_radius_km: Mapped[int] = mapped_column(Integer, nullable=False)
