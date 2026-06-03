@@ -1,4 +1,5 @@
 import uuid
+from datetime import datetime, timezone
 
 from loguru import logger
 from sqlalchemy import func
@@ -70,7 +71,7 @@ class ProviderService:
         lang: str,
         db: AsyncSession,
         update_data: ProviderProfileUpdateSchema
-    ):
+    ) -> dict:
         # re-validate with language context so error messages are translated
         data = ProviderProfileUpdateSchema.model_validate(
             update_data.model_dump(),
@@ -93,12 +94,34 @@ class ProviderService:
 
         # handle location logic and update the data_dict
         if "latitude" in data_dict and "longitude" in data_dict:
+            days_difference = (datetime.now(timezone.utc) -
+                               provider_instance.location_updated_at).days
+
+            if days_difference < 7:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=t("location_update_limit", lang),
+                )
             data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
             data_dict["location_updated_at"] = func.now()
 
+        if "working_radius_km" in data_dict:
+            days_difference = (datetime.now(timezone.utc) -
+                               provider_instance.radius_updated_at).days
+
+            if days_difference < 7:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=t("radius_update_limit", lang),
+                )
+
+            data_dict["radius_updated_at"] = func.now()
+
         try:
             await provider_repo.update(instance=provider_instance, **data_dict)
-            return t("profile_updated", lang)
+            return {
+                "message": t("profile_updated", lang)
+            }
         except IntegrityError as e:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)

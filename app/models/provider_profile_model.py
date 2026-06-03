@@ -81,6 +81,11 @@ class ProviderProfile(TimestampMixin, Base):
 
     working_radius_km: Mapped[int] = mapped_column(Integer, nullable=False)
 
+    radius_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
     has_smartphone: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
     is_available: Mapped[bool] = mapped_column(

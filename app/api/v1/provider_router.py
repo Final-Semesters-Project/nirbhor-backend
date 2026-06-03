@@ -50,13 +50,19 @@ async def get_provider_dashboard(
     "/me/update_profile",
     summary="Update provider profile",
     status_code=status.HTTP_200_OK,
+    response_model=dict
 )
 async def update_provider_profile(
     update_data: ProviderProfileUpdateSchema,
     current_user: User = Depends(get_current_provider),
     db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
+    # lang: str = Depends(get_lang),
+    accept_language: Annotated[str | None,
+                               Header(alias="Accept-Language")] = "en",
 ):
+    # Pass the header value down to your i18n handler or service layer
+    lang = "bn" if accept_language and accept_language.startswith(
+        "bn") else "en"
     try:
         return await ProviderService.update_provider_profile(db=db, lang=lang, provider_id=current_user.id, update_data=update_data)
     except HTTPException:
