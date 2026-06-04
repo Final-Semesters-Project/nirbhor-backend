@@ -33,23 +33,7 @@ async def register_seeker(
     device_info: str | None = Depends(get_device_info),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await AuthService.register_seeker(data=data, db=db, response=response, device_info=device_info, lang=lang)
-    except HTTPException:
-        raise
-    except DomainIntegrityError as de:
-        logger.error(
-            f"Domain Integrity Error: Seeker registration failed: {de}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=t("registration_failed", lang),
-        )
-    except Exception as e:
-        logger.error(f"Seeker registration failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=t("registration_failed", lang),
-        )
+    return await AuthService.register_seeker(data=data, db=db, response=response, device_info=device_info, lang=lang)
 
 
 @router.post(
@@ -65,24 +49,9 @@ async def register_provider(
     device_info: str | None = Depends(get_device_info),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await AuthService.register_provider(
-            data=data, db=db, response=response, device_info=device_info, lang=lang)
-    except HTTPException:
-        raise
-    except DomainIntegrityError as de:
-        logger.error(
-            f"Domain Integrity Error: Provider registration failed: {de}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=t("registration_failed", lang),
-        )
-    except Exception as e:
-        logger.error(f"Provider registration failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=t("registration_failed", lang),
-        )
+
+    return await AuthService.register_provider(
+        data=data, db=db, response=response, device_info=device_info, lang=lang)
 
 
 # login route
@@ -99,13 +68,4 @@ async def password_login(
     device_info: str | None = Depends(get_device_info),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Password Login failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=t("login_failed", lang),
-        )
+    return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)

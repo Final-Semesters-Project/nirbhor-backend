@@ -257,6 +257,7 @@ class AuthService:
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=t("account_suspended", lang),
             )
+
         # 4. Create new access token, refresh token, Store refresh token, Set refresh token in HttpOnly cookie
         # Web → access token in response body + refresh token in HttpOnly cookie
         # Flutter → access token + refresh token in response body
@@ -269,6 +270,7 @@ class AuthService:
         )
 
         await db.commit()
-        logger.success(f"User logged in: {user.id} | role: {user.role.value}")
+        logger.success(
+            f"User logged in: {user.id} | role: {user.role.value}")
 
         return result

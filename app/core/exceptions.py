@@ -1,7 +1,10 @@
 from fastapi import Request, status
 from fastapi.responses import JSONResponse
 from fastapi.exceptions import RequestValidationError
+from loguru import logger
 from starlette.exceptions import HTTPException as StarletteHTTPException
+
+from app.core.i18n import t
 
 
 # Domain Integrity Error: Catches Database Integrity Errors & shows a readable error message
@@ -67,4 +70,20 @@ def register_exception_handlers(app):
         return JSONResponse(
             status_code=status.HTTP_409_CONFLICT,
             content={"detail": exc.error_message}
+        )
+
+    @app.exception_handler(Exception)
+    async def global_unhandled_exception_handler(request: Request, exc: Exception):
+        # 1. Log the absolute truth securely on the machine
+        logger.critical(
+            f"Unhandled system exception on {request.url.path}: {exc}", exc_info=True)
+
+        # 2. Sniff out language from header for localization
+        accept_lang = request.headers.get("accept-language", "en")
+        lang = "bn" if accept_lang.startswith("bn") else "en"
+
+        # 3. Send back a polished, safe, completely generic JSON payload
+        return JSONResponse(
+            status_code=500,
+            content={"detail": t("internal_server_error", lang)}
         )

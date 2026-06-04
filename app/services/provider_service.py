@@ -15,7 +15,7 @@ from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
-from app.schemas.provider_schema import ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
+from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
 
 
 class ProviderService:
@@ -137,3 +137,44 @@ class ProviderService:
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
                 detail=t("profile_update_failed", lang),
             )
+
+    @staticmethod
+    async def add_new_skills(
+        provider_id: uuid.UUID,
+        payload: AddNewSkillSchema,
+        db: AsyncSession,
+        lang: str
+    ) -> dict:
+
+        try:
+            provider_repo = ProviderRepository(db)
+
+            provider = await provider_repo.get_by_id(provider_id)
+
+            if provider is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=t("user_not_found", lang),
+                )
+
+            if len(payload.skill_ids) == 0:
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=t("empty_data", lang),
+                )
+
+            await provider_repo.add_skills(provider_id=provider_id, skill_ids=payload.skill_ids)
+
+            await db.commit()
+            logger.success("New skill added successfully to provider")
+
+            return {
+                "message": t("new_skill_added", lang)
+            }
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            # translates according to lang
+            readable = parse_integrity_error(raw, lang)
+            logger.error(f"IntegrityError in provider profile update: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
