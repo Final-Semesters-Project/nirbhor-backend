@@ -54,6 +54,8 @@ MESSAGES = {
         "unauthorized_access": "You are not authorized to perform this action.",
         "profile_update_failed": "Profile update failed. Please try again.",
         "profile_updated": "Profile updated successfully.",
+        "location_update_limit": "7 days haven't passed after your last location update. Try again when 7 days have passed.",
+        "radius_update_limit": "7 days haven't passed after your last radius update. Try again when 7 days have passed.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -103,6 +105,8 @@ MESSAGES = {
         "unauthorized_access": "আপনি এই কাজটি প্রদর্শন করার অনুমতি নেই।",
         "profile_update_failed": "প্রোফাইল আপডেট ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।",
         "profile_updated": "প্রোফাইল সফলভাবে আপডেট হয়েছে।",
+        "location_update_limit": "আপনার শেষ অবস্থান আপডেটের পর ৭ দিন অতিবাহিত হয়নি। ৭ দিন অতিবাহিত হলে আবার চেষ্টা করুন।",
+        "radius_update_limit": "আপনার কাজের পরিধি আপডেটের পর ৭ দিন অতিবাহিত হয়নি। ৭ দিন অতিবাহিত হলে আবার চেষ্টা করুন।",
     }
 }
 

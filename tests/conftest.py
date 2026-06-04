@@ -1,4 +1,6 @@
 # shared fixtures (DB, client, test data)
+from datetime import datetime, timedelta, timezone
+
 from app.core.config import settings
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine, async_sessionmaker
 from sqlalchemy.pool import NullPool, AsyncAdaptedQueuePool
@@ -9,7 +11,9 @@ from app.db.base import Base
 from httpx import ASGITransport, AsyncClient
 from app.db.session import get_db_session
 from app.main import app
-from sqlalchemy import text
+from sqlalchemy import text, update
+
+from app.models.provider_profile_model import ProviderProfile
 
 
 # ---------------- Test Database -------------------
@@ -128,3 +132,43 @@ async def seed_test_skills(db_session):
         )
 
     await db_session.commit()
+
+
+# get access
+@pytest_asyncio.fixture
+async def get_authenticated_provider_token(
+    client: AsyncClient,
+    db_session: AsyncSession,
+    provider_payload: dict,
+    seed_test_skills
+) -> str:
+    """
+    Registers a fresh provider through the API, then returns access token for protected route testing.
+    Also backdates location and radius update timestamps to allow immediate updates in tests.
+    """
+    PROVIDER_REG_URL = "/api/v1/auth/register/provider"
+
+    # 1. Register the provider
+    response = await client.post(PROVIDER_REG_URL, json=provider_payload)
+    if response.status_code != 201:
+        pytest.fail(f"Fixture failed to register provider: {response.text}")
+
+    data = response.json()
+    access_token = data["access_token"]
+    user_id = data["user_id"]
+
+    # 2. Backdate the update timestamps to bypass the 7-day restriction
+    # Set them to 8 days ago so tests can update immediately
+    past_date = datetime.now(timezone.utc) - timedelta(days=8)
+
+    await db_session.execute(
+        update(ProviderProfile)
+        .where(ProviderProfile.user_id == user_id)
+        .values(
+            location_updated_at=past_date,
+            radius_updated_at=past_date
+        )
+    )
+    await db_session.commit()
+
+    return access_token

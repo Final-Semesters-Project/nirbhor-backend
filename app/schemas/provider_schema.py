@@ -42,19 +42,21 @@ class ProviderDashboardSchema(BaseModel):
 class ProviderProfileUpdateSchema(BaseModel):
     # name: str | None = Field( # for auth profile update - both users
     # ..., description="Name of the provider. EN/BN name update based on the language selected")
-    photo_url: str | None
-    nid_url: str | None
+    photo_url: str | None = None
+    nid_url: str | None = None
     latitude: float | None = Field(
-        ..., description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
+        None, description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
     longitude: float | None = Field(
-        ..., description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
-    working_radius_km: int | None
-    has_smartphone: bool | None
-    is_available: bool | None
+        None, description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
+    working_radius_km: int | None = None
+    has_smartphone: bool | None = None
+    is_available: bool | None = None
 
     @field_validator("working_radius_km", mode="after")
     @classmethod
     def validate_radius(cls, v: int, info: ValidationInfo) -> int:
+        if v is None:
+            return None
         return validate_radius(v, info=info)
 
     """
