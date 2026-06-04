@@ -116,7 +116,7 @@ class TestProviderProfileUpdate:
         # Immediate secondary execution — should trigger domain logic cooling window block rules
         second_attempt = await client.patch(PROVIDER_UPDATE_URL, json=payload, headers=headers)
         assert second_attempt.status_code == 400
-        assert "limit" in second_attempt.json()["detail"].lower()
+        assert "haven't passed" in second_attempt.json()["detail"].lower()
 
     async def test_update_profile_invalid_payload_types(
         self,
@@ -197,7 +197,7 @@ class TestProviderProfileUpdate:
         # Second update immediately should fail
         second_attempt = await client.patch(PROVIDER_UPDATE_URL, json=payload, headers=headers)
         assert second_attempt.status_code == 400
-        assert "limit" in second_attempt.json()["detail"].lower()
+        assert "haven't passed" in second_attempt.json()["detail"].lower()
 
     async def test_update_with_empty_payload(
         self,
