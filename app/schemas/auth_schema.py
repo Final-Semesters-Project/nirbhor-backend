@@ -55,7 +55,8 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
     )
     has_smartphone: bool
     photo_url: str | None = None
-    nid_url: str | None = None
+    nid_url_front: str | None = None
+    nid_url_back: str | None = None
 
     @field_validator("working_radius_km", mode="after")
     @classmethod
