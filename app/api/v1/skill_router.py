@@ -21,13 +21,4 @@ async def create_new_skill(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await SkillService.create_skill(data=data, db=db, lang=lang)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.critical(f"Skill creation failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=MESSAGES[lang]["skill_creation_failed"],
-        )
+    return await SkillService.create_skill(data=data, db=db, lang=lang)

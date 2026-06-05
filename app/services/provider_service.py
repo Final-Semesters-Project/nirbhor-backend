@@ -1,11 +1,12 @@
 import uuid
 from datetime import datetime, timezone
 
+from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import DomainIntegrityError
+from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
@@ -126,17 +127,43 @@ class ProviderService:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
+
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behaviour) or
+            # the actual asyncpg exception — handle both cases
+            is_fk = (
+                isinstance(e.orig, ForeignKeyViolationError)
+                or "ForeignKeyViolationError" in raw
+            )
+            is_unique = (
+                isinstance(e.orig, UniqueViolationError)
+                or "UniqueViolationError" in raw
+            )
+
+            # unwrap the original asyncpg exception to route correctly
+            if is_fk:
+                logger.warning(
+                    f"FK violation in provider profile update: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if is_unique:
+                logger.warning(
+                    f"Unique violation in provider profile update: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+
             logger.error(f"IntegrityError in provider profile update: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
-        except HTTPException:
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
             raise
         except Exception as e:
             await db.rollback()
             logger.error(f"Unexpected error in provider profile update: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=t("profile_update_failed", lang),
-            )
+            raise
 
     @staticmethod
     async def add_new_skills(
@@ -176,5 +203,41 @@ class ProviderService:
             raw = str(e.orig) if e.orig else str(e)
             # translates according to lang
             readable = parse_integrity_error(raw, lang)
-            logger.error(f"IntegrityError in provider profile update: {raw}")
+
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
+            # the actual asyncpg exception — handle both cases
+            is_fk = (
+                isinstance(e.orig, ForeignKeyViolationError)
+                or "ForeignKeyViolationError" in raw
+            )
+            is_unique = (
+                isinstance(e.orig, UniqueViolationError)
+                or "UniqueViolationError" in raw
+            )
+
+            # unwrap the original asyncpg exception to route correctly
+            if is_fk:
+                logger.warning(
+                    f"FK violation in adding new skill to provider: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if is_unique:
+                logger.warning(
+                    f"Unique violation in adding new skill to provider: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            logger.error(
+                f"IntegrityError in adding new skill to provider: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                f"Unexpected error in adding new skill to provider: {e}")
+            raise

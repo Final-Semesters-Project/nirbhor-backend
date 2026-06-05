@@ -26,14 +26,7 @@ async def get_provider_dashboard(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await ProviderService.get_dashboard(current_user=current_user, db=db, lang=lang)
-    except ValidationError as ve:
-        logger.critical(f"Validation error: {ve}")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Validation error: {ve}",
-        )
+    return await ProviderService.get_dashboard(current_user=current_user, db=db, lang=lang)
 
 
 @router.patch(
@@ -48,10 +41,7 @@ async def update_provider_profile(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await ProviderService.update_provider_profile(db=db, lang=lang, provider_id=current_user.id, update_data=update_data)
-    except HTTPException:
-        raise
+    return await ProviderService.update_provider_profile(db=db, lang=lang, provider_id=current_user.id, update_data=update_data)
 
 
 # for provider dashboard page: 1 api to get a list of skills and 1 to add that skill to provider
@@ -65,11 +55,6 @@ async def add_skills(
     payload: AddNewSkillSchema,
     current_user: User = Depends(get_current_provider),
     db: AsyncSession = Depends(get_db_session),
-    # lang: str = Depends(get_lang),
-    accept_language: Annotated[str | None,
-                               Header(alias="Accept-Language")] = "en",
+    lang: str = Depends(get_lang),
 ):
-    # Pass the header value down to your i18n handler or service layer
-    lang = "bn" if accept_language and accept_language.startswith(
-        "bn") else "en"
     return await ProviderService.add_new_skills(db=db, lang=lang, provider_id=current_user.id, payload=payload)

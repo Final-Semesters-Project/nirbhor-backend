@@ -1,7 +1,8 @@
+from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.exceptions import DomainIntegrityError
+from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
@@ -30,9 +31,8 @@ class SkillService:
 
         if existing:
             logger.error(f"Skill {data.name_en} already exists")
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=t("existing_skill", lang),
+            raise DomainIntegrityError(
+                error_message=t("existing_skill", lang),
             )
 
         category = await db.get(Category, data.category_id)
@@ -59,14 +59,39 @@ class SkillService:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
-            logger.error(f"IntegrityError in skill creation: {raw}")
+
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behaviour) or
+            # the actual asyncpg exception — handle both cases
+            is_fk = (
+                isinstance(e.orig, ForeignKeyViolationError)
+                or "ForeignKeyViolationError" in raw
+            )
+            is_unique = (
+                isinstance(e.orig, UniqueViolationError)
+                or "UniqueViolationError" in raw
+            )
+
+            # unwrap the original asyncpg exception to route correctly
+            if is_fk:
+                logger.warning(f"FK violation in skill creation: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if is_unique:
+                logger.warning(
+                    f"Unique violation in skill creation: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+
+            logger.error(f"Unhandled IntegrityError in skill creation: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
-        except HTTPException:
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
             raise
         except Exception as e:
             await db.rollback()
             logger.critical(f"Unexpected error in provider registration: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=t("skill_creation_failed", lang),
-            )
+            raise

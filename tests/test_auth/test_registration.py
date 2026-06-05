@@ -1,6 +1,10 @@
 import pytest
 from httpx import AsyncClient
 
+"""
+run this one file
+docker exec -it nirbhor_backend_dev pytest tests/test_auth/test_registration.py -v
+"""
 
 SEEKER_URL = "/api/v1/auth/register/seeker"
 PROVIDER_URL = "/api/v1/auth/register/provider"

@@ -20,13 +20,4 @@ async def create_new_category(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    try:
-        return await CategoryService.create_category(data=data, db=db, lang=lang)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.critical(f"Category creation failed: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=MESSAGES[lang]["category_creation_failed"],
-        )
+    return await CategoryService.create_category(data=data, db=db, lang=lang)

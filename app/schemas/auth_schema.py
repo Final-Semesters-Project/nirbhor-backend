@@ -54,9 +54,12 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
         description="Working radius must be between 1 and 5 km"
     )
     has_smartphone: bool
-    photo_url: str | None = None
-    nid_url_front: str | None = None
-    nid_url_back: str | None = None
+    # photo_url: str | None = None
+    # nid_url_front: str | None = None
+    # nid_url_back: str | None = None
+    # photo_public_id: str | None = None
+    # nid_front_public_id: str | None = None
+    # nid_back_public_id: str | None = None
 
     @field_validator("working_radius_km", mode="after")
     @classmethod
