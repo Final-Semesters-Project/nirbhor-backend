@@ -69,15 +69,6 @@ async def root():
 # register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
 register_exception_handlers(app)
 
-
-# Domain Integrity Error catch in every route
-# @app.exception_handler(DomainIntegrityError)
-# async def domain_integrity_error_handler(request: Request, exc: DomainIntegrityError):
-#     return JSONResponse(
-#         status_code=status.HTTP_409_CONFLICT,
-#         content={"detail": exc.error_message},
-#     )
-
 app.include_router(api_router, prefix="/api/v1")
 
 if __name__ == "__main__":

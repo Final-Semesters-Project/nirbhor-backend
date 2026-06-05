@@ -55,7 +55,8 @@ class UserService:
                 is_available=profile.is_available,
                 average_rating=profile.average_rating,
                 photo_url=profile.photo_url,
-                nid_url=profile.nid_url,
+                nid_url_front=profile.nid_url_front,
+                nid_url_back=profile.nid_url_back,
                 warning_status=profile.warning_status,
                 ai_review_summary=localized_summary,
                 created_at=current_user.created_at

@@ -37,9 +37,17 @@ class ProviderProfile(TimestampMixin, Base):
 
     photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    photo_public_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
     nid_url_front: Mapped[str | None] = mapped_column(String, nullable=True)
 
+    nid_front_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
+
     nid_url_back: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    nid_back_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
 
     verification_level: Mapped[VerificationLevel] = mapped_column(
         sqlEnum(

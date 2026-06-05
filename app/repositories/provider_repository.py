@@ -18,9 +18,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
         latitude: float,
         longitude: float,
         working_radius_km: int,
-        has_smartphone: bool,
-        photo_url: str | None = None,
-        nid_url: str | None = None,
+        has_smartphone: bool
     ) -> ProviderProfile:
         # WKT (Well-Known Text) format for PostGIS point
         # POINT(longitude latitude) — note: longitude first, this is the GIS standard
@@ -31,8 +29,6 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             base_location=location_wkt,
             working_radius_km=working_radius_km,
             has_smartphone=has_smartphone,
-            photo_url=photo_url,
-            nid_url=nid_url,
             location_updated_at=func.now(),
             radius_updated_at=func.now(),
         )

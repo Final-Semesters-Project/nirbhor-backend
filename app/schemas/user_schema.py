@@ -39,7 +39,8 @@ class ProviderMeSchema(BaseModel):
     average_rating: float | None
 
     photo_url: str | None = None
-    nid_url: str | None = None
+    nid_url_front: str | None = None
+    nid_url_back: str | None = None
 
     warning_status: bool
 

@@ -1,7 +1,7 @@
+from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from fastapi import HTTPException, status, Response
-from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
-from app.core.exceptions import DomainIntegrityError
+from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import MESSAGES, t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.repositories.provider_repository import ProviderRepository
@@ -94,9 +94,8 @@ class AuthService:
         # business rule: phone must be unique
         existing = await user_repo.get_by_phone(data.phone)
         if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=MESSAGES[lang]["phone_number_exists"],
+            raise DomainIntegrityError(
+                error_message=t("phone_number_exists", lang),
             )
 
         try:
@@ -129,17 +128,31 @@ class AuthService:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
-            logger.error(f"IntegrityError in seeker registration: {raw}")
+
+            # unwrap the original asyncpg exception to route correctly
+            if isinstance(e.orig, ForeignKeyViolationError):
+                logger.warning(f"FK violation in seeker registration: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if isinstance(e.orig, UniqueViolationError):
+                logger.warning(
+                    f"Unique violation in seeker registration: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            logger.error(
+                f"Unhandled IntegrityError in seeker registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
-        except HTTPException:
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
             raise
         except Exception as e:
             await db.rollback()
             logger.error(f"Unexpected error in seeker registration: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=t("registration_failed", lang),
-            )
+            raise
 
     # register provider
     @staticmethod
@@ -164,9 +177,8 @@ class AuthService:
         # business rule: phone must be unique
         existing = await user_repo.get_by_phone(data.phone)
         if existing:
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail="An account with this phone number already exists",
+            raise DomainIntegrityError(
+                error_message=t("phone_number_exists", lang),
             )
 
         try:
@@ -185,9 +197,7 @@ class AuthService:
                 latitude=data.latitude,
                 longitude=data.longitude,
                 working_radius_km=data.working_radius_km,
-                user_id=user.id,
-                photo_url=data.photo_url,
-                nid_url=data.nid_url,
+                user_id=user.id
             )
 
             await provider_repo.add_skills(user.id, data.skill_ids)
@@ -205,23 +215,50 @@ class AuthService:
 
             await db.commit()
 
-            logger.success(f"Seeker registered: {user.id}")
+            logger.success(f"Provider registered: {user.id}")
             return result
         except IntegrityError as e:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
-            logger.error(f"IntegrityError in provider registration: {raw}")
+
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
+            # the actual asyncpg exception — handle both cases
+            is_fk = (
+                isinstance(e.orig, ForeignKeyViolationError)
+                or "ForeignKeyViolationError" in raw
+            )
+            is_unique = (
+                isinstance(e.orig, UniqueViolationError)
+                or "UniqueViolationError" in raw
+            )
+
+            # unwrap the original asyncpg exception to route correctly
+            if is_fk:
+                logger.warning(f"FK violation in provider registration: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if is_unique:
+                logger.warning(
+                    f"Unique violation in provider registration: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+
+            logger.error(
+                f"Unhandled IntegrityError in provider registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
-        except HTTPException:
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
             raise
         except Exception as e:
             await db.rollback()
             logger.error(f"Unexpected error in provider registration: {e}")
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail=t("registration_failed", lang),
-            )
+            # don't convert to HTTPException — let global handler produce the 500
+            raise
 
     @staticmethod
     async def password_login(

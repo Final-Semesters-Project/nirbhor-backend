@@ -17,6 +17,7 @@ MESSAGES = {
         "skill_not_found.": "Skill not found.",
         "category_creation_failed": "Category creation failed. Please try again.",
         "invalid_skill": "One or more selected skills do not exist.",
+        "invalid_skill_ids": "One or more selected skill IDs do not exist.",
         "invalid_category": "Selected category does not exist.",
         "category_exists": "Category already exists.",
         "category_does_not_exists": "Category does not exists.",
@@ -59,7 +60,6 @@ MESSAGES = {
         "add_skills_to_provider_failed": "Failed to add skills. Please try again.",
         "new_skill_added": "New skill added successfully.",
         "internal_server_error": "Internal server error. Please try again.",
-        "empty_data": "No data provided.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -74,6 +74,7 @@ MESSAGES = {
         "category_exists": "বিভাগটি ইতিমধ্যেই বিদ্যমান।",
         "category_does_not_exists": "বিভাগ পাওয়া যায়নি।",
         "invalid_skill": "এক বা একাধিক দক্ষতা বিদ্যমান নেই।",
+        "invalid_skill_ids": "এক বা একাধিক দক্ষতা আইডি বিদ্যমান নেই।",
         "invalid_category": "নির্বাচিত বিভাগ বিদ্যমান নেই।",
         "user_not_found": "ব্যবহারকারী পাওয়া যায়নি।",
         "invalid_credentials": "ভুল লগইন ক্রেডেন্শিয়াল।",

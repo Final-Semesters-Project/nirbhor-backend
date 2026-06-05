@@ -22,11 +22,4 @@ async def get_me(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ) -> SeekerMeSchema | ProviderMeSchema:
-    try:
-        return await UserService.get_me(current_user, db, lang)
-    except Exception as e:
-        logger.critical(f"Failed to get current user: {e}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=t("user_not_found", lang),
-        )
+    return await UserService.get_me(current_user, db, lang)

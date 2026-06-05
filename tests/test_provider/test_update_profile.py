@@ -2,6 +2,11 @@ import pytest
 import uuid
 from httpx import AsyncClient
 
+"""
+run only this one file
+docker exec -it nirbhor_backend_dev pytest tests/test_provider/test_update_profile.py -v
+"""
+
 PROVIDER_UPDATE_URL = "/api/v1/provider/me/update_profile"
 
 # ══════════════════════════════════════════════════════════════════
