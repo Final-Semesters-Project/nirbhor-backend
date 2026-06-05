@@ -76,16 +76,3 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
 
         result = await self.db.execute(query)
         return result.scalar()
-
-    # async def asdasd(self, user_id: uuid.UUID):
-    #     query = (
-    #         select(ProviderProfile)
-    #         .options(
-    #             joinedload(ProviderProfile.user),
-    #             # This fetches the link table AND the actual Skill model in one go
-    #             joinedload(ProviderProfile.skill_links).joinedload(ProviderSkillLink.skill),
-    #         )
-    #         .where(ProviderProfile.user_id == user_id)
-    #     )
-    #     result = await self.db.execute(query)
-    #     return result.scalars().first()

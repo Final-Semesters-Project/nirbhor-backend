@@ -59,6 +59,10 @@ class ProviderProfileUpdateSchema(BaseModel):
             return None
         return validate_radius(v, info=info)
 
+
+class AddNewSkillSchema(BaseModel):
+    skill_ids: list[int]
+
     """
     for admins to update
     verification_level: Mapped[VerificationLevel] = mapped_column(

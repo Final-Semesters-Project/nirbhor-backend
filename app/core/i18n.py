@@ -56,6 +56,10 @@ MESSAGES = {
         "profile_updated": "Profile updated successfully.",
         "location_update_limit": "7 days haven't passed after your last location update. Try again when 7 days have passed.",
         "radius_update_limit": "7 days haven't passed after your last radius update. Try again when 7 days have passed.",
+        "add_skills_to_provider_failed": "Failed to add skills. Please try again.",
+        "new_skill_added": "New skill added successfully.",
+        "internal_server_error": "Internal server error. Please try again.",
+        "empty_data": "No data provided.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -107,6 +111,10 @@ MESSAGES = {
         "profile_updated": "প্রোফাইল সফলভাবে আপডেট হয়েছে।",
         "location_update_limit": "আপনার শেষ অবস্থান আপডেটের পর ৭ দিন অতিবাহিত হয়নি। ৭ দিন অতিবাহিত হলে আবার চেষ্টা করুন।",
         "radius_update_limit": "আপনার কাজের পরিধি আপডেটের পর ৭ দিন অতিবাহিত হয়নি। ৭ দিন অতিবাহিত হলে আবার চেষ্টা করুন।",
+        "add_skills_to_provider_failed": "দক্ষতা যুক্ত করা ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।",
+        "new_skill_added": "নতুন দক্ষতা সফলভাবে যুক্ত হয়েছে।",
+        "internal_server_error": "অভ্যন্তরীণ সার্ভার ত্রুটি। পুনরায় চেষ্টা করুন।",
+        "empty_data": "কোন তথ্য প্রদান করা হয়নি।",
     }
 }
 
