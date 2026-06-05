@@ -60,6 +60,7 @@ MESSAGES = {
         "add_skills_to_provider_failed": "Failed to add skills. Please try again.",
         "new_skill_added": "New skill added successfully.",
         "internal_server_error": "Internal server error. Please try again.",
+        "nid_already_verified": "NID already verified. Can not upload again.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -116,6 +117,7 @@ MESSAGES = {
         "new_skill_added": "নতুন দক্ষতা সফলভাবে যুক্ত হয়েছে।",
         "internal_server_error": "অভ্যন্তরীণ সার্ভার ত্রুটি। পুনরায় চেষ্টা করুন।",
         "empty_data": "কোন তথ্য প্রদান করা হয়নি।",
+        "nid_already_verified": "এনআইডি ইতিমধ্যে যাচাই করা হয়েছে। পুনরায় আপলোড করা যাবে না।"
     }
 }
 

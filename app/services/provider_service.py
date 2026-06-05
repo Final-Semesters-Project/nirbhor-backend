@@ -10,7 +10,7 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
-from app.models.provider_profile_model import ProviderProfile
+from app.models.provider_profile_model import ProviderProfile, VerificationStatus
 from app.models.skill_model import Skill
 from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
@@ -127,6 +127,15 @@ class ProviderService:
                 )
 
             data_dict["radius_updated_at"] = func.now()
+
+        # Prevent NID image re-uploads if verification is approved
+        nid_fields = ["nid_front_public_id", "nid_back_public_id"]
+        if any(field in data_dict for field in nid_fields):
+            if provider_instance.verification_status == VerificationStatus.APPROVED:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=t("nid_already_verified", lang),
+                )
 
         # if "photo_public_id" in data_dict and provider_instance.photo_public_id is not None:
         #     if data_dict["photo_public_id"] != provider_instance.photo_public_id:
