@@ -17,9 +17,19 @@ from app.repositories.provider_repository import ProviderRepository
 from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
+from app.services.cloudinary_service import delete_image_from_cloudinary
 
 
 class ProviderService:
+
+    @staticmethod
+    async def _delete_old_image_if_changed(data_dict: dict, field_name: str, current_value: str | None) -> None:
+        """Delete old image from Cloudinary if a new value is provided."""
+        if field_name in data_dict and current_value is not None:
+            new_value = data_dict[field_name]
+            if new_value != current_value:
+                await delete_image_from_cloudinary(public_id=current_value)
+
     @staticmethod
     async def get_dashboard(
         current_user: User,
@@ -89,7 +99,7 @@ class ProviderService:
                 detail=t("user_not_found", lang),
             )
 
-        # 2. Prepare the update dictionary from the Pydantic model
+        # Prepare the update dictionary from the Pydantic model
         # Use exclude_unset=True for PATCH-style partial updates
         data_dict = update_data.model_dump(exclude_unset=True)
 
@@ -117,6 +127,23 @@ class ProviderService:
                 )
 
             data_dict["radius_updated_at"] = func.now()
+
+        # if "photo_public_id" in data_dict and provider_instance.photo_public_id is not None:
+        #     if data_dict["photo_public_id"] != provider_instance.photo_public_id:
+        #         await delete_image_from_cloudinary(public_id=provider_instance.photo_public_id)
+
+        # if "nid_front_public_id" in data_dict and provider_instance.nid_front_public_id is not None:
+        #     if data_dict["nid_front_public_id"] != provider_instance.nid_front_public_id:
+        #         await delete_image_from_cloudinary(public_id=provider_instance.nid_front_public_id)
+
+        # if "nid_back_public_id" in data_dict and provider_instance.nid_back_public_id is not None:
+        #     if data_dict["nid_back_public_id"] != provider_instance.nid_back_public_id:
+        #         await delete_image_from_cloudinary(public_id=provider_instance.nid_back_public_id)
+
+        # handling images = new photo uploaded in cloudinary -> client send url + public_id -> delete the old photo from cloudinary -> update the photo url and public_id
+        await ProviderService._delete_old_image_if_changed(data_dict, "photo_public_id", provider_instance.photo_public_id)
+        await ProviderService._delete_old_image_if_changed(data_dict, "nid_front_public_id", provider_instance.nid_front_public_id)
+        await ProviderService._delete_old_image_if_changed(data_dict, "nid_back_public_id", provider_instance.nid_back_public_id)
 
         try:
             await provider_repo.update(instance=provider_instance, **data_dict)
