@@ -43,7 +43,14 @@ class ProviderProfileUpdateSchema(BaseModel):
     # name: str | None = Field( # for auth profile update - both users
     # ..., description="Name of the provider. EN/BN name update based on the language selected")
     photo_url: str | None = None
-    nid_url: str | None = None
+    photo_public_id: str | None = None
+
+    nid_url_front: str | None = None
+    nid_front_public_id: str | None = None
+
+    nid_url_back: str | None = None
+    nid_back_public_id: str | None = None
+
     latitude: float | None = Field(
         None, description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
     longitude: float | None = Field(
