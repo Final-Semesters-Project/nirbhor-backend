@@ -19,6 +19,10 @@ class Role(str, enum.Enum):
 class User(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "users"
 
+    name_en: Mapped[str] = mapped_column(String, nullable=False)
+
+    name_bn: Mapped[str] = mapped_column(String, nullable=False)
+
     phone_en: Mapped[str] = mapped_column(
         String, nullable=False, unique=True, index=True)  # Login and Calls
 
@@ -74,4 +78,54 @@ class User(UUIDMixin, TimestampMixin, Base):
         back_populates="user",
         uselist=True,  # for 1-to-many
         cascade="all, delete-orphan"  # delete token when user is deleted
+    )
+
+    bookings_as_seeker: Mapped[list["Booking"]] = relationship(  # type: ignore
+        back_populates="seeker",
+        foreign_keys="Booking.seeker_id",
+        cascade="all, delete-orphan"
+    )
+
+    bookings_as_provider: Mapped[list["Booking"]] = relationship(  # type: ignore
+        back_populates="provider",
+        foreign_keys="Booking.provider_id",
+        # No cascade because deleting a user shouldn't delete booking records
+    )
+
+    # relationship to urgent broadcast
+    urgent_broadcasts: Mapped[list["UrgentBroadcast"]] = relationship(  # type: ignore
+        back_populates="seeker",
+        foreign_keys="UrgentBroadcast.seeker_id",
+    )
+
+    claimed_broadcasts: Mapped[list["UrgentBroadcast"]] = relationship(  # type: ignore
+        back_populates="claimed_by",
+        foreign_keys="UrgentBroadcast.claimed_by_provider_id",
+    )
+
+    # relationship to user session
+    sessions: Mapped[list["UserSession"]] = relationship(  # type: ignore
+        back_populates="user",
+        cascade="all, delete-orphan",
+    )
+
+    # relationship to user report
+    reports_made: Mapped[list["UserReport"]] = relationship(  # type: ignore
+        back_populates="reporter",
+        foreign_keys="UserReport.reporter_id",
+    )
+    reports_received: Mapped[list["UserReport"]] = relationship(  # type: ignore
+        back_populates="reported_user",
+        foreign_keys="UserReport.reported_user_id",
+    )
+
+    # relationship to review
+    reviews_given: Mapped[list["Review"]] = relationship(  # type: ignore
+        back_populates="reviewer",
+        foreign_keys="Review.reviewer_id",
+    )
+
+    reviews_received: Mapped[list["Review"]] = relationship(  # type: ignore
+        back_populates="reviewee",
+        foreign_keys="Review.reviewee_id",
     )

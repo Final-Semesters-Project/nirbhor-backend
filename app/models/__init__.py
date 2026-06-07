@@ -4,3 +4,10 @@ from .category_model import Category
 from .skill_model import Skill
 from .provider_skill_link_model import ProviderSkillLink
 from .fcm_token import FCMToken
+from .booking_model import Booking
+from .team_model import Team
+from .urgent_broadcast_model import UrgentBroadcast
+from .user_session_model import UserSession
+from .user_report_model import UserReport
+from .app_version_model import AppVersion
+from .review_model import Review

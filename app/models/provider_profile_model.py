@@ -1,6 +1,7 @@
+from datetime import datetime
 import uuid
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, Enum as sqlEnum, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, DateTime, Enum as sqlEnum, Float, ForeignKey, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 import enum
@@ -8,15 +9,15 @@ from app.models.mixins.timestamp_mixin import TimestampMixin
 
 
 class VerificationLevel(str, enum.Enum):
-    BASIC = "BASIC"
-    VERIFIED = "VERIFIED"
-    TRUSTED = "TRUSTED"
+    BASIC = "basic"
+    VERIFIED = "verified"
+    TRUSTED = "trusted"
 
 
 class VerificationStatus(str, enum.Enum):
-    PENDING = "PENDING"
-    APPROVED = "APPROVED"
-    REJECTED = "REJECTED"
+    PENDING = "pending"
+    APPROVED = "approved"
+    REJECTED = "rejected"
 
 
 class ProviderProfile(TimestampMixin, Base):
@@ -34,13 +35,19 @@ class ProviderProfile(TimestampMixin, Base):
         uselist=False,
     )
 
-    name_en: Mapped[str] = mapped_column(String, nullable=False)
-
-    name_bn: Mapped[str] = mapped_column(String, nullable=False)
-
     photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    nid_url: Mapped[str | None] = mapped_column(String, nullable=True)
+    photo_public_id: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    nid_url_front: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    nid_front_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
+
+    nid_url_back: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    nid_back_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
 
     verification_level: Mapped[VerificationLevel] = mapped_column(
         sqlEnum(
@@ -77,7 +84,17 @@ class ProviderProfile(TimestampMixin, Base):
         nullable=False,
     )
 
+    location_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
+
     working_radius_km: Mapped[int] = mapped_column(Integer, nullable=False)
+
+    radius_updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True),
+        nullable=False
+    )
 
     has_smartphone: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
@@ -100,4 +117,9 @@ class ProviderProfile(TimestampMixin, Base):
     skill_links: Mapped[list["ProviderSkillLink"]] = relationship(  # type: ignore
         back_populates="provider",
         cascade="all, delete-orphan",
+    )
+
+    # add teams relationship
+    teams: Mapped[list["Team"]] = relationship(  # type: ignore
+        back_populates="leader",
     )

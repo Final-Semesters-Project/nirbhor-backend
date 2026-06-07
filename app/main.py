@@ -1,17 +1,23 @@
-from fastapi import FastAPI, Depends
-from loguru import logger
-from sqlalchemy import select, literal
+from fastapi.responses import JSONResponse
+from app.api.v1.router import api_router
+from fastapi import FastAPI, Request, status
 from app.core.config import settings
-from sqlalchemy.ext.asyncio import AsyncSession
-from app.db.session import get_db_session
+from app.core.exceptions import DomainIntegrityError, register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
+from app.db.seed import seed_categories_and_skills
+from app.db.session import AsyncSessionLocal
+
+app_kwargs = {}
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # runs on startup, before any requests
+    # runs once on startup
     setup_logging()
+    async with AsyncSessionLocal() as db:
+        await seed_categories_and_skills(db)
     yield
     # runs on shutdown, after all requests
 
@@ -21,20 +27,29 @@ ENV = settings.APP_ENV or "development"
 
 # disable swagger and redoc in production
 if ENV == "production":
-    app = FastAPI(
-        docs_url=None,
-        redoc_url=None,
-        openapi_url=None
-    )
+    # app = FastAPI(
+    #     docs_url=None,
+    #     redoc_url=None,
+    #     openapi_url=None
+    # )
+    app_kwargs.update({
+        "docs_url": None,
+        "redoc_url": None,
+        "openapi_url": None
+    })
 else:
-    app = FastAPI(
-        # send HttpOnly Cookies to Swagger UI
-        swagger_ui_parameters={"withCredentials": True}
-    )
+    # app = FastAPI(
+    #     # send HttpOnly Cookies to Swagger UI
+    #     swagger_ui_parameters={"withCredentials": True}
+    # )
+    app_kwargs.update({
+        "swagger_ui_parameters": {"withCredentials": True}
+    })
 
+app = FastAPI(lifespan=lifespan, **app_kwargs)
 
 # middlewares
-# 1. check for staging key if in staging
+# 1. check for staging key if in staging (this is for frontend to test the backend server, the staging key lets the frontend access the backend but other people can't access it. Render doesn't allow deployments with custom user permissions in free tier)
 if ENV == "staging" and settings.STAGING_API_KEY is not None:
     from app.middleware.staging_auth import StagingAuthMiddleware
 
@@ -51,12 +66,10 @@ async def root():
     return {"status": "awake"}
 
 
-# crete a router to check db health using select 1
-# @app.get("/health")
-# async def check_db(session: AsyncSession = Depends(get_db_session)):
-#     query = select(literal(1))
-#     result = await session.execute(query)
-#     return result.scalar()
+# register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
+register_exception_handlers(app)
+
+app.include_router(api_router, prefix="/api/v1")
 
 if __name__ == "__main__":
     import uvicorn
