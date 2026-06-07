@@ -58,3 +58,6 @@ async def add_skills(
     lang: str = Depends(get_lang),
 ):
     return await ProviderService.add_new_skills(db=db, lang=lang, provider_id=current_user.id, payload=payload)
+
+
+#
