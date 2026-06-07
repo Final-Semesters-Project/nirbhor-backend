@@ -114,22 +114,7 @@ api_router.include_router(search.router, prefix="/search", tags=["Search"])
 api_router.include_router(urgent.router, prefix="/urgent", tags=["Urgent"])
 ```
 
-### 2. Add a missing i18n key
-
-In `app/core/i18n.py`, add these keys to the MESSAGES dict:
-
-```python
-"booking_not_found":        {"en": "Booking not found.",                           "bn": "বুকিং পাওয়া যায়নি।"},
-"booking_wrong_status":     {"en": "This booking cannot be updated at this stage.", "bn": "এই বুকিং এখন আপডেট করা যাবে না।"},
-"booking_not_yours":        {"en": "You are not authorized to update this booking.","bn": "এই বুকিং আপডেট করার অনুমতি নেই।"},
-"too_many_open_bookings":   {"en": "You already have an open booking. Please resolve it first.", "bn": "আপনার একটি সক্রিয় বুকিং আছে। আগে সেটি সম্পন্ন করুন।"},
-"provider_unavailable":     {"en": "This provider is currently unavailable.",       "bn": "এই প্রোভাইডার এখন উপলব্ধ নেই।"},
-"broadcast_not_found":      {"en": "Broadcast not found or already expired.",       "bn": "ব্রডকাস্ট পাওয়া যায়নি বা মেয়াদ শেষ।"},
-"broadcast_already_claimed":{"en": "Sorry, another provider has already claimed this.", "bn": "দুঃখিত, অন্য একজন প্রোভাইডার আগেই এটি গ্রহণ করেছেন।"},
-"broadcast_created":        {"en": "Urgent broadcast sent. Waiting for a provider.","bn": "জরুরি অনুরোধ পাঠানো হয়েছে। প্রোভাইডারের জন্য অপেক্ষা করুন।"},
-"no_providers_found":       {"en": "No providers found in your area.",              "bn": "আপনার এলাকায় কোনো প্রোভাইডার পাওয়া যায়নি।"},
-"work_schedule_required":   {"en": "work_schedule is required when hired is true.", "bn": "কাজের সময়সূচি প্রদান করুন।"},
-```
+### 2. Add a missing i18n key => added
 
 ### 3. FCM (stub for now, real implementation later)
 
@@ -140,91 +125,6 @@ separate task. For now the stubs log the intent without actually sending.
 
 ## 1. Schemas
 
-### `app/schemas/booking_schema.py`
-
-```python
-from pydantic import BaseModel, model_validator, field_validator
-from datetime import datetime
-from uuid import UUID
-from app.models.booking import BookingStatus
-
-
-class BookingInitiateSchema(BaseModel):
-    """Seeker clicks 'Request to Call' on a provider profile."""
-    provider_id: UUID
-    skill_id: int
-    latitude: float
-    longitude: float
-
-
-class BookingRespondSchema(BaseModel):
-    """Seeker responds to the FCM follow-up notification."""
-    hired: bool
-    work_schedule: datetime | None = None
-
-    @model_validator(mode="after")
-    def work_schedule_required_if_hired(self) -> "BookingRespondSchema":
-        if self.hired and self.work_schedule is None:
-            raise ValueError("work_schedule is required when hired is true.")
-        return self
-
-    @field_validator("work_schedule")
-    @classmethod
-    def work_schedule_must_be_future(cls, v: datetime | None) -> datetime | None:
-        if v is not None and v <= datetime.utcnow():
-            raise ValueError("work_schedule must be a future date.")
-        return v
-
-
-# ── Response schemas ──────────────────────────────────────────────────────────
-
-class BookingInitiateResponse(BaseModel):
-    booking_id: UUID
-    provider_phone: str        # revealed only after initiation
-    provider_name: str
-    status: BookingStatus
-
-    model_config = {"from_attributes": True}
-
-
-class BookingListItem(BaseModel):
-    """Used for both seeker history and provider incoming list."""
-    booking_id: UUID
-    status: BookingStatus
-    skill_id: int
-    created_at: datetime
-    work_schedule: datetime | None
-    # seeker sees provider info; provider sees seeker info
-    other_party_name: str
-    other_party_phone: str | None  # None until INITIATED for seeker view
-
-    model_config = {"from_attributes": True}
-```
-
-### `app/schemas/search_schema.py`
-
-```python
-from pydantic import BaseModel, field_validator
-from uuid import UUID
-from datetime import datetime
-
-
-class ProviderSearchResult(BaseModel):
-    """One provider card returned from the search endpoint."""
-    user_id: UUID
-    name: str                       # localized (en or bn)
-    skill_names: list[str]          # localized skill names
-    verification_level: str
-    average_rating: float | None
-    distance_km: float
-    working_radius_km: int
-    has_smartphone: bool
-    is_available: bool
-    last_active_at: datetime | None
-    # phone is intentionally excluded — revealed only after booking initiation
-
-    model_config = {"from_attributes": True}
-```
 
 ### `app/schemas/urgent_schema.py`
 
@@ -273,13 +173,54 @@ class BookingRepository(BaseRepository[Booking]):
         super().__init__(db, Booking)
 
     async def count_active_initiated(self, seeker_id: UUID) -> int:
-        """Count how many INITIATED bookings this seeker currently has open."""
+        """
+        Count INITIATED bookings from this seeker within the last 2 hours.
+        We only count within 2 hours because that's when the first FCM fires.
+        After 2 hours the seeker is done unlocking numbers for this session.
+        """
+        two_hours_ago = datetime.utcnow() - timedelta(hours=2)
         result = await self.db.execute(
             select(func.count())
             .where(Booking.seeker_id == seeker_id)
             .where(Booking.status == BookingStatus.INITIATED)
+            .where(Booking.call_unlocked_at >= two_hours_ago)  # within current session
         )
         return result.scalar_one()
+
+    async def cancel_other_initiated(
+        self, seeker_id: UUID, exclude_booking_id: UUID
+    ) -> int:
+        """
+        When seeker confirms hiring one provider, cancel all other open
+        INITIATED bookings from this seeker. Returns count of cancelled rows.
+        """
+        from sqlalchemy import update
+        result = await self.db.execute(
+            update(Booking)
+            .where(Booking.seeker_id == seeker_id)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .where(Booking.id != exclude_booking_id)
+            .values(status=BookingStatus.CANCELLED)
+            .returning(Booking.id)  # lets us count how many were cancelled
+        )
+        return len(result.all())
+
+    async def get_initiated_ready_for_followup(self) -> list["Booking"]:
+        """
+        Find INITIATED bookings that are exactly 2 hours old (±5 min window).
+        Called by APScheduler every 5 minutes to fire the first FCM.
+        """
+        now = datetime.utcnow()
+        window_start = now - timedelta(hours=2, minutes=5)
+        window_end   = now - timedelta(hours=2)
+
+        result = await self.db.execute(
+            select(Booking)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .where(Booking.call_unlocked_at >= window_start)
+            .where(Booking.call_unlocked_at <= window_end)
+        )
+        return list(result.scalars().all())
 
     async def create_booking(
         self,
@@ -655,8 +596,9 @@ from app.schemas.booking_schema import (
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 
-# Business rule: max 1 open (INITIATED) booking at a time per seeker
-MAX_OPEN_BOOKINGS = 1
+# Business rule: max 10 open (INITIATED) booking at a time per seeker
+MAX_OPEN_BOOKINGS = 10          # max simultaneous unlocked numbers
+FOLLOWUP_DELAY_HOURS = 2        # FCM fires after this many hours
 
 
 class BookingService:
@@ -742,6 +684,17 @@ class BookingService:
             booking.status = BookingStatus.IN_PROGRESS
             booking.confirmed_at = datetime.utcnow()
             booking.work_schedule = data.work_schedule
+
+        # Auto-cancel all other INITIATED bookings from this seeker
+        cancelled_count = await booking_repo.cancel_other_initiated(
+        seeker_id=seeker_id,
+        exclude_booking_id=booking_id,
+        )
+        if cancelled_count > 0:
+            logger.info(
+            f"Auto-cancelled {cancelled_count} other INITIATED bookings "
+            f"for seeker {seeker_id} after confirming booking {booking_id}"
+            )
 
             # Implied Activity: bump last_active_at for both parties
             now = datetime.utcnow()
@@ -1280,3 +1233,89 @@ navigator.geolocation.getCurrentPosition((pos) => {
 });
 ```
 Both send the coordinates as query params to `GET /api/v1/search/providers`.
+
+
+
+# APScheduler
+# app/jobs/booking_jobs.py
+```python
+from datetime import datetime, timedelta
+from loguru import logger
+from sqlalchemy import update
+
+from app.db.session import AsyncSessionLocal
+from app.models.booking import Booking, BookingStatus
+from app.repositories.booking_repository import BookingRepository
+
+
+async def send_booking_followup_notifications():
+    """
+    Runs every 5 minutes via APScheduler.
+    Finds INITIATED bookings that crossed the 2-hour mark and sends FCM.
+
+    Why a polling job instead of scheduling per booking:
+    APScheduler with multiple Gunicorn workers would fire duplicate jobs
+    if each booking schedules its own. A single polling job with a time
+    window is simpler and safe.
+    """
+    async with AsyncSessionLocal() as db:
+        repo = BookingRepository(db)
+        bookings = await repo.get_initiated_ready_for_followup()
+
+        if not bookings:
+            return
+
+        logger.info(f"Booking followup job: {len(bookings)} bookings ready for FCM")
+
+        for booking in bookings:
+            # Status guard: only send if still INITIATED
+            # (could have been confirmed/cancelled in the last 5 mins)
+            if booking.status != BookingStatus.INITIATED:
+                continue
+
+            logger.info(
+                f"Sending 2hr follow-up FCM for booking {booking.id} "
+                f"to seeker {booking.seeker_id}"
+            )
+            # TODO: await NotificationService.send_booking_followup(
+            #     seeker_id=booking.seeker_id,
+            #     booking_id=booking.id,
+            #     attempt=1
+            # )
+
+
+async def expire_stale_bookings():
+    """
+    Runs nightly at midnight via APScheduler.
+    INITIATED bookings older than 48 hours → AUTO_EXPIRED.
+    This is unchanged from the original design.
+    """
+    async with AsyncSessionLocal() as db:
+        cutoff = datetime.utcnow() - timedelta(hours=48)
+        result = await db.execute(
+            update(Booking)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .where(Booking.call_unlocked_at < cutoff)
+            .values(status=BookingStatus.AUTO_EXPIRED)
+            .returning(Booking.id)
+        )
+        expired = len(result.all())
+        await db.commit()
+        if expired:
+            logger.info(f"Nightly cleanup: expired {expired} stale bookings")
+```
+
+# register jobs
+
+```python
+# In lifespan, after setup_logging():
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings
+
+scheduler = AsyncIOScheduler()
+scheduler.add_job(send_booking_followup_notifications, "interval", minutes=5)
+scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+scheduler.start()
+yield
+scheduler.shutdown()
+```
