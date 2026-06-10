@@ -41,7 +41,30 @@ class DomainValidationError(Exception):
         return self.error_message
 
 
+# =================================
+# Mapping from the raw ValueError string → i18n key
+VALIDATOR_MSG_MAP = {
+    "work schedule is required when hired is true.": "work_schedule_required",
+    "work schedule must be a future time.":          "work_schedule_must_be_future",
+    # add more as you write more validators
+}
+
+
+def _translate_validator_msg(pydantic_msg: str, lang: str) -> str:
+    """
+    Pydantic wraps ValueError text as: "Value error, <your message>"
+    This strips the prefix and looks up the translation.
+    Falls back to the cleaned English message if no translation found.
+    """
+    clean = pydantic_msg.removeprefix("Value error, ").strip()
+    key = VALIDATOR_MSG_MAP.get(clean)
+    if key:
+        return t(key, lang)
+    return clean
+# =================================
 # extract error messages from pydantic validation errors(422 Unprocessable Content)
+
+
 def register_exception_handlers(app):
     """Register all global exception handlers on the FastAPI app."""
 
@@ -54,6 +77,9 @@ def register_exception_handlers(app):
         Normalize Pydantic 422 errors to match our standard error format.
         Extracts the first error message for simplicity.
         """
+        accept_lang = request.headers.get("accept-language", "en")
+        lang = "bn" if accept_lang.startswith("bn") else "en"
+
         errors = exc.errors()
 
         # extract human readable messages from pydantic errors
@@ -62,7 +88,13 @@ def register_exception_handlers(app):
             field = " → ".join(str(loc)
                                for loc in error["loc"] if loc != "body")
             msg = error["msg"]
-            messages.append(f"{field}: {msg}" if field else msg)
+
+            # Translate known validator messages
+            # msg from Pydantic looks like "Value error, work_schedule is required..."
+            # We match on the raw message text we raised in the validator
+            translated = _translate_validator_msg(msg, lang)
+            messages.append(f"{field}: {translated}" if field else translated)
+            # messages.append(f"{field}: {msg}" if field else msg)
 
         logger.debug(
             f"Validation error(pydantic 422) on {request.method} {request.url.path}: {messages}"

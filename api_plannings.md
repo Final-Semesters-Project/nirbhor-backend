@@ -727,46 +727,6 @@ class UrgentService:
 ### `app/api/v1/bookings.py`
 
 ```python
-from uuid import UUID
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.session import get_db
-from app.core.i18n import get_lang
-from app.core.security import get_current_user
-from app.models.user import User, Role
-from app.schemas.booking_schema import (
-    BookingInitiateSchema,
-    BookingRespondSchema,
-    BookingInitiateResponse,
-    BookingListItem,
-)
-from app.services.booking_service import BookingService
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
-
-router = APIRouter()
-
-
-@router.post("/initiate", response_model=BookingInitiateResponse, status_code=201)
-async def initiate_booking(
-    data: BookingInitiateSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """Seeker clicks 'Request to Call'. Creates booking, reveals provider phone."""
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.initiate_booking(
-        data=data,
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-
-
 @router.patch("/{booking_id}/respond", status_code=200)
 async def respond_to_booking(
     booking_id: UUID,
