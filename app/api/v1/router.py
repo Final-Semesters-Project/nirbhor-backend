@@ -1,5 +1,5 @@
 from fastapi import APIRouter
-from app.api.v1 import auth_router, bookings_router, skill_router, category_router, user_router, provider_router
+from app.api.v1 import auth_router, skill_router, category_router, user_router, provider_router, bookings_router
 
 api_router = APIRouter()
 

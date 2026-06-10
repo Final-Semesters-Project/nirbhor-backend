@@ -70,7 +70,8 @@ MESSAGES = {
         "broadcast_created": "Urgent broadcast sent. Waiting for a provider.",
         "no_providers_found": "No providers found in your area.",
         "work_schedule_required": "work schedule is required when hired is true.",
-        "work_schedule_must_be_future": "work schedule must be a future time."
+        "work_schedule_must_be_future": "work schedule must be a future time.",
+        "provider_unskilled": "This skill is not available for this provider.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -138,6 +139,7 @@ MESSAGES = {
         "no_providers_found": "আপনার এলাকায় কোনো প্রোভাইডার পাওয়া যায়নি।",
         "work_schedule_required": "কাজের সময়সূচি প্রদান করুন।",
         "work_schedule_must_be_future": "কাজের সময়সূচি একটি পরবর্তী সময় হতে হবে।",
+        "provider_unskilled": "এই স্কিল এই প্রোভাইডারের জন্য উপলব্ধ নয়।",
     }
 }
 

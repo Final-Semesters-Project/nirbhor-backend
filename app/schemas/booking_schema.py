@@ -1,6 +1,6 @@
 from uuid import UUID
 from pydantic import BaseModel, ValidationInfo, model_validator, field_validator, Field, ConfigDict
-from datetime import datetime
+from datetime import datetime, timezone
 from app.core.i18n import t
 from app.models.booking_model import BookingStatus
 
@@ -24,13 +24,13 @@ class BookingInitiateResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class BookingRespondSchema(BaseModel):
+class BookingRespondFromNotificationSchema(BaseModel):
     """Seeker responds to the FCM follow-up notification."""
     hired: bool
     work_schedule: datetime | None = None
 
     @model_validator(mode="after")
-    def work_schedule_required_if_hired(self, info: ValidationInfo) -> "BookingRespondSchema":
+    def work_schedule_required_if_hired(self, info: ValidationInfo) -> "BookingRespondFromNotificationSchema":
         if self.hired and self.work_schedule is None:
             lang = info.context.get("lang", "en") if info.context else "en"
             raise ValueError(t("work_schedule_required", lang))
@@ -39,7 +39,7 @@ class BookingRespondSchema(BaseModel):
     @field_validator("work_schedule")
     @classmethod
     def work_schedule_must_be_future(cls, v: datetime | None, info: ValidationInfo) -> datetime | None:
-        if v is not None and v <= datetime.utcnow():
+        if v is not None and v <= datetime.now(timezone.utc):
             lang = info.context.get("lang", "en") if info.context else "en"
             raise ValueError(t("work_schedule_must_be_future", lang))
         return v

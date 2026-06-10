@@ -1,3 +1,6 @@
+from uuid import UUID
+
+from app.models.provider_skill_link_model import ProviderSkillLink
 from app.repositories.base_repository import BaseRepository
 from app.models.skill_model import Skill
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -25,5 +28,17 @@ class SkillRepository(BaseRepository[Skill]):
                     *conditions  # unpack the list
                 )
             )
+        )
+        return result.scalars().first()
+
+    async def check_if_provider_has_skill(
+            self,
+            skill_id: int,
+            provider_id: UUID
+    ):
+        result = await self.db.execute(
+            select(ProviderSkillLink)
+            .where(ProviderSkillLink.skill_id == skill_id)
+            .where(ProviderSkillLink.provider_id == provider_id)
         )
         return result.scalars().first()
