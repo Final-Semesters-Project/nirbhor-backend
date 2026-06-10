@@ -78,7 +78,7 @@ class BookingRepository(BaseRepository[Booking]):
             provider_id=provider_id,
             skill_id=skill_id,
             status=BookingStatus.INITIATED,
-            call_unlocked_at=datetime.utcnow(),
+            call_unlocked_at=datetime.now(timezone.utc),
             job_location=point,
         )
         self.db.add(booking)
@@ -120,6 +120,29 @@ class BookingRepository(BaseRepository[Booking]):
             .order_by(Booking.confirmed_at.desc())
         )
         return list(result.scalars().all())
+
+    async def get_provider_incoming_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
+        """Bookings with seeker eagerly loaded."""
+        from sqlalchemy.orm import aliased
+
+        result = await self.db.execute(
+            select(Booking, User)
+            .join(User, Booking.seeker_id == User.id)
+            .where(Booking.provider_id == provider_id)
+            .where(Booking.status == BookingStatus.IN_PROGRESS)
+            .order_by(Booking.confirmed_at.desc())
+        )
+        return list(result.tuples())
+
+    async def get_seeker_history_with_providers(self, seeker_id: UUID) -> list[tuple[Booking, User]]:
+        """Bookings with provider eagerly loaded."""
+        result = await self.db.execute(
+            select(Booking, User)
+            .join(User, Booking.provider_id == User.id)
+            .where(Booking.seeker_id == seeker_id)
+            .order_by(Booking.created_at.desc())
+        )
+        return list(result.tuples())
 
     async def get_seeker_history(self, seeker_id: UUID) -> list[Booking]:
         """All bookings for this seeker, newest first."""

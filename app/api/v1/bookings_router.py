@@ -1,12 +1,41 @@
-from fastapi import Depends, HTTPException, status, APIRouter
-from loguru import logger
+from uuid import UUID
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.core.i18n import MESSAGES, get_lang
 from app.db.session import get_db_session
+from app.core.i18n import get_lang
+from app.api.dependencies import get_current_user, get_current_seeker, get_current_provider
+from app.models.user_model import Role, User
+from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema
+from app.services.booking_service import BookingService
+from app.core.exceptions import DomainValidationError
+from app.core.i18n import t
+
+router = APIRouter(prefix="/bookings", tags=["Bookings"])
+
+
+@router.post(
+    "/initiate",
+    response_model=BookingInitiateResponse,
+    status_code=201,
+    summary="Initiate a booking request and get provider phone number",
+)
+async def initiate_booking(
+    data: BookingInitiateSchema,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Seeker clicks 'Request to Call'. Creates booking, reveals provider phone."""
+    return await BookingService.initiate_booking(
+        data=data,
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
 
 """
-# Domain 1: Bookings Management (/app/api/v1/bookings/)
-- Handles: Intent-to-Book Workflow.
+
 1. POST /api/v1/bookings/initiate
 - Trigger: Seeker clicks "Request to Call" on a provider's profile.
 - Logic:
@@ -33,20 +62,3 @@ Payload Schema: {"hired": bool, "work_schedule": datetime | None}
 
 - Logic: Query all records matching seeker_id == current_user.id (including INITIATED entries so they can see past numbers they requested).
 """
-
-router = APIRouter(prefix="/bookings", tags=["Bookings"])
-
-# Initiate a new booking: Seeker clicks "Request to Call" on a provider's profile
-
-
-# @router.post(
-#     "/initiate",
-#     response_model=dict,
-#     summary="Create a new category",
-# )
-# async def create_new_category(
-#     data: CategoryCreateSchema,
-#     db: AsyncSession = Depends(get_db_session),
-#     lang: str = Depends(get_lang),
-# ):
-#     return await CategoryService.create_category(data=data, db=db, lang=lang)

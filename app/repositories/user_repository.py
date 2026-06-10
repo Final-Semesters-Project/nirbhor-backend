@@ -2,6 +2,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.user_model import User
 from app.repositories.base_repository import BaseRepository
+from uuid import UUID
+from datetime import datetime
 
 
 class UserRepository(BaseRepository[User]):
@@ -12,6 +14,16 @@ class UserRepository(BaseRepository[User]):
         return await self.db.scalar(
             select(User).where(User.phone_en == phone)
         )
+
+    async def update_last_active(self, user_id: UUID, timestamp: datetime) -> None:
+        """Directly update last_active_at for a user. Used by Implied Activity."""
+        from sqlalchemy import update
+        await self.db.execute(
+            update(User)
+            .where(User.id == user_id)
+            .values(last_active_at=timestamp)
+        )
+        # no flush needed — will be committed by the calling service
 
 
 """

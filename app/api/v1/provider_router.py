@@ -1,5 +1,3 @@
-from typing import Annotated
-import uuid
 from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from loguru import logger
 from pydantic import ValidationError
