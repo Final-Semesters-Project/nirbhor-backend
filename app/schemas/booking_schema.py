@@ -1,4 +1,5 @@
 from uuid import UUID
+from loguru import logger
 from pydantic import BaseModel, ValidationInfo, model_validator, field_validator, Field, ConfigDict
 from datetime import datetime, timezone
 from app.core.i18n import t
@@ -30,18 +31,18 @@ class BookingRespondFromNotificationSchema(BaseModel):
     work_schedule: datetime | None = None
 
     @model_validator(mode="after")
-    def work_schedule_required_if_hired(self, info: ValidationInfo) -> "BookingRespondFromNotificationSchema":
+    def work_schedule_required_if_hired(self) -> "BookingRespondFromNotificationSchema":
         if self.hired and self.work_schedule is None:
-            lang = info.context.get("lang", "en") if info.context else "en"
-            raise ValueError(t("work_schedule_required", lang))
+            # raise ValueError(t("work_schedule_required", lang))
+            raise ValueError("work schedule is required when hired is true.")
         return self
 
     @field_validator("work_schedule")
     @classmethod
-    def work_schedule_must_be_future(cls, v: datetime | None, info: ValidationInfo) -> datetime | None:
+    def work_schedule_must_be_future(cls, v: datetime | None) -> datetime | None:
         if v is not None and v <= datetime.now(timezone.utc):
-            lang = info.context.get("lang", "en") if info.context else "en"
-            raise ValueError(t("work_schedule_must_be_future", lang))
+            # raise ValueError(t("work_schedule_must_be_future", lang))
+            raise ValueError("work schedule must be a future time.")
         return v
 
 

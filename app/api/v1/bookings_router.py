@@ -1,5 +1,6 @@
+from typing import Annotated
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Header
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
@@ -34,24 +35,34 @@ async def initiate_booking(
     )
 
 
+@router.patch("/{booking_id}/respond", status_code=200)
+async def respond_to_booking(
+    booking_id: UUID,
+    data: BookingRespondFromNotificationSchema,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Seeker responds to the FCM follow-up.
+    hired=true  → IN_PROGRESS + work_schedule required
+    hired=false → CANCELLED
+    """
+    return await BookingService.respond_to_booking(
+        booking_id=booking_id,
+        data=data,
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
 """
+accept_language: Annotated[str | None,
+                               Header(alias="Accept-Language")] = "en"
+# Pass the header value down to your i18n handler or service layer
+lang = "bn" if accept_language and accept_language.startswith(
+        "bn") else "en"
 
-1. POST /api/v1/bookings/initiate
-- Trigger: Seeker clicks "Request to Call" on a provider's profile.
-- Logic:
-    - Count active INITIATED records for the calling seeker; reject if they are spamming multiple open numbers simultaneously.
-
-    - Insert a row into bookings with status = BookingStatus.INITIATED and set call_unlocked_at = datetime.utcnow().
-
-    - Response: Returns the raw phone number of the provider so the frontend can trigger the native system dialer.
-
-2. PATCH /api/v1/bookings/{booking_id}/respond
-- Trigger: Seeker responds to the 2-hour or 24-hour FCM notification prompt ("Did you end up hiring...?").
-Payload Schema: {"hired": bool, "work_schedule": datetime | None}
-- Logic:
-    - If hired == True: Update status directly to IN_PROGRESS (bypassing CONFIRMED as discussed) and save the explicit work_schedule. Automatically bump last_active_at for both users here to trigger Implied Activity tracking.
-
-    - If hired == False: Update status to CANCELLED.
 
 3. GET /api/v1/bookings/provider/me
 - Trigger: Provider opens their "Incoming Bookings" tab (matches your incoming_bookings.png UI mockup).

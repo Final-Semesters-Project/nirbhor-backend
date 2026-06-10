@@ -84,10 +84,11 @@ class ProviderService:
         update_data: ProviderProfileUpdateSchema
     ) -> dict:
         # re-validate with language context so error messages are translated
-        data = ProviderProfileUpdateSchema.model_validate(
-            update_data.model_dump(),
-            context={"lang": lang}
-        )
+        # FIXME: enable this block if translations are not working
+        # data = ProviderProfileUpdateSchema.model_validate(
+        #     update_data.model_dump(),
+        #     context={"lang": lang}
+        # )
 
         provider_repo = ProviderRepository(db)
 
