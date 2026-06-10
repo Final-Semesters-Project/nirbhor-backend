@@ -60,6 +60,17 @@ MESSAGES = {
         "add_skills_to_provider_failed": "Failed to add skills. Please try again.",
         "new_skill_added": "New skill added successfully.",
         "internal_server_error": "Internal server error. Please try again.",
+        "nid_already_verified": "NID already verified. Can not upload again.",
+        "booking_wrong_status": "This booking cannot be updated at this stage.",
+        "booking_not_yours":  "You are not authorized to update this booking.",
+        "too_many_open_bookings": "You can unlock up to 10 provider numbers at a time. Please wait 2 hours before unlocking more.",
+        "provider_unavailable": "This provider is currently unavailable.",
+        "broadcast_not_found": "Broadcast not found or already expired.",
+        "broadcast_already_claimed": "Sorry, another provider has already claimed this.",
+        "broadcast_created": "Urgent broadcast sent. Waiting for a provider.",
+        "no_providers_found": "No providers found in your area.",
+        "work_schedule_required": "work schedule is required when hired is true.",
+        "work_schedule_must_be_future": "work schedule must be a future time."
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -116,6 +127,17 @@ MESSAGES = {
         "new_skill_added": "নতুন দক্ষতা সফলভাবে যুক্ত হয়েছে।",
         "internal_server_error": "অভ্যন্তরীণ সার্ভার ত্রুটি। পুনরায় চেষ্টা করুন।",
         "empty_data": "কোন তথ্য প্রদান করা হয়নি।",
+        "nid_already_verified": "এনআইডি ইতিমধ্যে যাচাই করা হয়েছে। পুনরায় আপলোড করা যাবে না।",
+        "booking_wrong_status": "এই বুকিং এখন আপডেট করা যাবে না।",
+        "booking_not_yours": "এই বুকিং আপডেট করার অনুমতি নেই।",
+        "too_many_open_bookings": "আপনি একসাথে সর্বোচ্চ ১০টি প্রোভাইডারের নম্বর আনলক করতে পারবেন। আরও আনলক করতে ২ ঘণ্টা অপেক্ষা করুন।",
+        "provider_unavailable": "এই প্রোভাইডার এখন উপলব্ধ নেই।",
+        "broadcast_not_found": "ব্রডকাস্ট পাওয়া যায়নি বা মেয়াদ শেষ।",
+        "broadcast_already_claimed": "দুঃখিত, অন্য একজন প্রোভাইডার আগেই এটি গ্রহণ করেছেন।",
+        "broadcast_created": "জরুরি অনুরোধ পাঠানো হয়েছে। প্রোভাইডারের জন্য অপেক্ষা করুন।",
+        "no_providers_found": "আপনার এলাকায় কোনো প্রোভাইডার পাওয়া যায়নি।",
+        "work_schedule_required": "কাজের সময়সূচি প্রদান করুন।",
+        "work_schedule_must_be_future": "কাজের সময়সূচি একটি পরবর্তী সময় হতে হবে।",
     }
 }
 

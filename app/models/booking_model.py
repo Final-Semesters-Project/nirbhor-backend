@@ -8,10 +8,11 @@ import enum
 from datetime import datetime
 from geoalchemy2 import Geometry
 
+# CONFIRMED = "confirmed"
+
 
 class BookingStatus(str, enum.Enum):
     INITIATED = "initiated"
-    CONFIRMED = "confirmed"
     IN_PROGRESS = "in_progress"
     COMPLETED = "completed"
     CANCELLED = "cancelled"

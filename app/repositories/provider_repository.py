@@ -6,6 +6,7 @@ from app.models.booking_model import Booking
 from app.models.provider_profile_model import ProviderProfile
 from app.models.provider_skill_link_model import ProviderSkillLink
 from app.repositories.base_repository import BaseRepository
+from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 
 
 class ProviderRepository(BaseRepository[ProviderProfile]):
@@ -22,11 +23,13 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
     ) -> ProviderProfile:
         # WKT (Well-Known Text) format for PostGIS point
         # POINT(longitude latitude) — note: longitude first, this is the GIS standard
-        location_wkt = f"POINT({longitude} {latitude})"
+        # location_wkt = f"POINT({longitude} {latitude})"
+
+        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
 
         profile = ProviderProfile(
             user_id=user_id,
-            base_location=location_wkt,
+            base_location=point,
             working_radius_km=working_radius_km,
             has_smartphone=has_smartphone,
             location_updated_at=func.now(),

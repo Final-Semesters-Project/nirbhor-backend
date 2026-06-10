@@ -27,9 +27,11 @@ class ProviderMeSchema(BaseModel):
     )
     verification_status: VerificationStatus = Field(
         ...,
-        description="Verification status of the provider. (pending, approved, rejected)",
+        description="Verification status of the provider. (pending, approved, rejected). Disable Nid upload if approved. Let provider upload nid if rejected/pending",
     )
-    # verification_rejection_reason: str | None
+    verification_rejection_reason: str | None = Field(
+        ..., description="Rejection reason of the provider if rejected. Show in the profile section if rejected"
+    )
     # base_location: str, point?
 
     working_radius_km: int
