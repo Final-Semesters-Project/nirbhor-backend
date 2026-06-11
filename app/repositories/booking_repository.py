@@ -141,6 +141,7 @@ class BookingRepository(BaseRepository[Booking]):
         result = await self.db.execute(
             select(Booking, User)
             .join(User, Booking.provider_id == User.id)
+            .options(selectinload(Booking.skill))
             .where(Booking.seeker_id == seeker_id)
             .order_by(Booking.created_at.desc())
         )
