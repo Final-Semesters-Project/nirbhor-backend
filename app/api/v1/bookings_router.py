@@ -56,20 +56,45 @@ async def respond_to_booking(
         lang=lang,
     )
 
+
+@router.get("/provider/me",
+            # response_model=list[BookingListItem]
+            )
+async def provider_incoming_bookings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
+    if current_user.role != Role.PROVIDER:
+        raise DomainValidationError(t("booking_not_yours", lang))
+
+    return await BookingService.get_provider_incoming(
+        provider_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
+@router.get("/seeker/me", response_model=list[BookingListItem])
+async def seeker_booking_history(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Seeker's full booking history including open INITIATED entries."""
+    if current_user.role != Role.SEEKER:
+        raise DomainValidationError(t("booking_not_yours", lang))
+
+    return await BookingService.get_seeker_history(
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
 """
 accept_language: Annotated[str | None,
                                Header(alias="Accept-Language")] = "en"
 # Pass the header value down to your i18n handler or service layer
 lang = "bn" if accept_language and accept_language.startswith(
         "bn") else "en"
-
-
-3. GET /api/v1/bookings/provider/me
-- Trigger: Provider opens their "Incoming Bookings" tab (matches your incoming_bookings.png UI mockup).
-- Logic: Query bookings table where provider_id == current_user.id AND status == BookingStatus.IN_PROGRESS. (This cleanly isolates and hides INITIATED records from their screen).
-
-4. GET /api/v1/bookings/seeker/me
-- Trigger: Seeker opens their booking history list.
-
-- Logic: Query all records matching seeker_id == current_user.id (including INITIATED entries so they can see past numbers they requested).
 """

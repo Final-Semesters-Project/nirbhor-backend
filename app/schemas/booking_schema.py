@@ -1,6 +1,6 @@
 from uuid import UUID
 from loguru import logger
-from pydantic import BaseModel, ValidationInfo, model_validator, field_validator, Field, ConfigDict
+from pydantic import BaseModel, model_validator, field_validator, Field, ConfigDict
 from datetime import datetime, timezone
 from app.core.i18n import t
 from app.models.booking_model import BookingStatus
@@ -33,7 +33,6 @@ class BookingRespondFromNotificationSchema(BaseModel):
     @model_validator(mode="after")
     def work_schedule_required_if_hired(self) -> "BookingRespondFromNotificationSchema":
         if self.hired and self.work_schedule is None:
-            # raise ValueError(t("work_schedule_required", lang))
             raise ValueError("work schedule is required when hired is true.")
         return self
 
@@ -41,7 +40,6 @@ class BookingRespondFromNotificationSchema(BaseModel):
     @classmethod
     def work_schedule_must_be_future(cls, v: datetime | None) -> datetime | None:
         if v is not None and v <= datetime.now(timezone.utc):
-            # raise ValueError(t("work_schedule_must_be_future", lang))
             raise ValueError("work schedule must be a future time.")
         return v
 
@@ -51,6 +49,7 @@ class BookingListItem(BaseModel):
     booking_id: UUID
     status: BookingStatus
     skill_id: int
+    skill_name: str
     created_at: datetime
     work_schedule: datetime | None
     # seeker sees provider info; provider sees seeker info

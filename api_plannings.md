@@ -724,64 +724,6 @@ class UrgentService:
 
 ## 4. Routers
 
-### `app/api/v1/bookings.py`
-
-```python
-@router.patch("/{booking_id}/respond", status_code=200)
-async def respond_to_booking(
-    booking_id: UUID,
-    data: BookingRespondSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker responds to the FCM follow-up.
-    hired=true  → IN_PROGRESS + work_schedule required
-    hired=false → CANCELLED
-    """
-    return await BookingService.respond_to_booking(
-        booking_id=booking_id,
-        data=data,
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-
-
-@router.get("/provider/me", response_model=list[BookingListItem])
-async def provider_incoming_bookings(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
-    if current_user.role != Role.PROVIDER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.get_provider_incoming(
-        provider_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-
-
-@router.get("/seeker/me", response_model=list[BookingListItem])
-async def seeker_booking_history(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """Seeker's full booking history including open INITIATED entries."""
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.get_seeker_history(
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-```
 
 ### `app/api/v1/search.py`
 
