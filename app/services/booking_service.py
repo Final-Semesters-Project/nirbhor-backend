@@ -246,10 +246,13 @@ class BookingService:
         result = []
         for booking, seeker in bookings_with_seekers:
             localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
+            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+            logger.success(dict(result))
             result.append(BookingListItem(
                 booking_id=booking.id,
                 status=booking.status,
                 skill_id=booking.skill_id,
+                skill_name=localized_skill_name,
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
                 other_party_name=localized_name,
@@ -270,11 +273,14 @@ class BookingService:
         result = []
         for booking, provider in bookings_with_providers:
             localized_name = provider.name_bn if lang == "bn" else provider.name_en
+            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
             phone = provider.phone_en
+
             result.append(BookingListItem(
                 booking_id=booking.id,
                 status=booking.status,
                 skill_id=booking.skill_id,
+                skill_name=localized_skill_name,
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
                 other_party_name=localized_name,
