@@ -102,18 +102,6 @@ app/
 
 ### 1. Register the new routers in `app/api/v1/router.py`
 
-```python
-# app/api/v1/router.py
-from fastapi import APIRouter
-from app.api.v1 import auth, bookings, search, urgent  # add the three new ones
-
-api_router = APIRouter()
-api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
-api_router.include_router(bookings.router, prefix="/bookings", tags=["Bookings"])
-api_router.include_router(search.router, prefix="/search", tags=["Search"])
-api_router.include_router(urgent.router, prefix="/urgent", tags=["Urgent"])
-```
-
 ### 2. Add a missing i18n key => added
 
 ### 3. FCM (stub for now, real implementation later)
@@ -172,123 +160,6 @@ from app.models.provider_skill_link import ProviderSkillLink
 class SearchRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
-
-    async def find_providers(
-        self,
-        skill_category_id: int,
-        seeker_lat: float,
-        seeker_lng: float,
-        search_radius_km: int,
-    ) -> list[dict]:
-        """
-        Core geospatial search with inline ranking score.
-
-        Score formula (from spec):
-            score = (1/distance_km)
-                  + (average_rating * 2)
-                  + verification_bonus   [TRUSTED=+5, VERIFIED=+3, else 0]
-                  + activity_bonus       [0-3d=+10, 4-15d=+5, 16-30d=-30, 31-60d=-60]
-                  + (recent_booking_count * 0.5)
-
-        Filters:
-            - provider must have a skill in the requested category
-            - provider base_location must be within search_radius_km of seeker
-            - is_available must be True
-            - last_active_at must not be older than 60 days
-        """
-        now = datetime.utcnow()
-        seeker_point = ST_SetSRID(ST_MakePoint(seeker_lng, seeker_lat), 4326)
-
-        # Convert KM to meters for ST_DWithin (geography uses meters)
-        radius_m = search_radius_km * 1000
-
-        # ── Activity bonus/penalty as a CASE expression ───────────────────────
-        days_inactive = func.extract(
-            "epoch",
-            now - User.last_active_at
-        ) / 86400  # convert seconds to days
-
-        activity_score = case(
-            (days_inactive <= 3,  10.0),
-            (days_inactive <= 15,  5.0),
-            (days_inactive <= 30, -30.0),
-            (days_inactive <= 60, -60.0),
-            else_=-60.0,  # fallback (shouldn't reach here due to WHERE filter)
-        )
-
-        # ── Verification bonus ────────────────────────────────────────────────
-        verification_score = case(
-            (ProviderProfile.verification_level == VerificationLevel.TRUSTED,  5.0),
-            (ProviderProfile.verification_level == VerificationLevel.VERIFIED, 3.0),
-            else_=0.0,
-        )
-
-        # ── Distance in KM from seeker to provider base_location ─────────────
-        # ST_Distance with geography=True returns meters
-        distance_m = ST_Distance(
-            ProviderProfile.base_location.cast(text("geography")),
-            seeker_point.cast(text("geography")),
-        )
-        distance_km = distance_m / 1000.0
-
-        # ── Recent booking count (last 30 days) ───────────────────────────────
-        # Subquery: how many completed bookings has this provider had?
-        from app.models.booking import Booking, BookingStatus
-        recent_bookings_sq = (
-            select(func.count())
-            .where(Booking.provider_id == ProviderProfile.user_id)
-            .where(Booking.status == BookingStatus.COMPLETED)
-            .where(Booking.completed_at >= now - timedelta(days=30))
-            .correlate(ProviderProfile)
-            .scalar_subquery()
-        )
-
-        # ── Composite ranking score ───────────────────────────────────────────
-        ranking_score = (
-            (1.0 / func.nullif(distance_km, 0))
-            + (func.coalesce(ProviderProfile.average_rating, 0.0) * 2.0)
-            + verification_score
-            + activity_score
-            + (recent_bookings_sq * 0.5)
-        )
-
-        stmt = (
-            select(
-                User.id.label("user_id"),
-                User.last_active_at,
-                ProviderProfile.working_radius_km,
-                ProviderProfile.verification_level,
-                ProviderProfile.average_rating,
-                ProviderProfile.has_smartphone,
-                ProviderProfile.is_available,
-                distance_km.label("distance_km"),
-                ranking_score.label("score"),
-            )
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .join(ProviderSkillLink, ProviderProfile.user_id == ProviderSkillLink.provider_id)
-            .join(Skill, ProviderSkillLink.skill_id == Skill.id)
-            # ── Filters ───────────────────────────────────────────────────────
-            .where(Skill.category_id == skill_category_id)
-            .where(ProviderProfile.is_available == True)
-            .where(User.is_active == True)
-            # provider working radius must overlap seeker location
-            .where(
-                ST_DWithin(
-                    ProviderProfile.base_location.cast(text("geography")),
-                    seeker_point.cast(text("geography")),
-                    radius_m,
-                )
-            )
-            # exclude 60+ day inactive providers entirely
-            .where(
-                User.last_active_at >= now - timedelta(days=60)
-            )
-            .distinct(User.id)
-            .order_by(ranking_score.desc())
-        )
-
-        result = await self.db.execute(stmt)
-        return [dict(row._mapping) for row in result.all()]
 
     async def get_provider_skill_names(
         self, provider_ids: list[UUID], category_id: int, lang: str
@@ -439,89 +310,6 @@ class UrgentRepository(BaseRepository[UrgentBroadcast]):
 
 ## 3. Services
 
-### `app/services/booking_service.py`
-
-```python
-from uuid import UUID
-from datetime import datetime
-from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
-
-from app.models.booking import BookingStatus
-from app.models.provider_profile import ProviderProfile
-from app.repositories.booking_repository import BookingRepository
-from app.repositories.user_repository import UserRepository
-from app.schemas.booking_schema import (
-    BookingInitiateSchema,
-    BookingRespondSchema,
-    BookingInitiateResponse,
-    BookingListItem,
-)
-from app.core.exceptions import DomainIntegrityError, DomainValidationError
-from app.core.i18n import t
-
-# Business rule: max 10 open (INITIATED) booking at a time per seeker
-MAX_OPEN_BOOKINGS = 10          # max simultaneous unlocked numbers
-FOLLOWUP_DELAY_HOURS = 2        # FCM fires after this many hours
-
-
-class BookingService:
-
-
-    @staticmethod
-    async def get_provider_incoming(
-        provider_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> list[BookingListItem]:
-        """Provider's 'Incoming Bookings' tab — only IN_PROGRESS."""
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-        bookings = await booking_repo.get_provider_incoming(provider_id)
-
-        result = []
-        for b in bookings:
-            seeker = await user_repo.get_by_id(b.seeker_id)
-            result.append(BookingListItem(
-                booking_id=b.id,
-                status=b.status,
-                skill_id=b.skill_id,
-                created_at=b.created_at,
-                work_schedule=b.work_schedule,
-                other_party_name=seeker.name_en if seeker else "—",
-                other_party_phone=seeker.phone_en if seeker else None,
-            ))
-        return result
-
-    @staticmethod
-    async def get_seeker_history(
-        seeker_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> list[BookingListItem]:
-        """Seeker's full booking history including INITIATED entries."""
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-        bookings = await booking_repo.get_seeker_history(seeker_id)
-
-        result = []
-        for b in bookings:
-            provider = await user_repo.get_by_id(b.provider_id)
-            # Phone only revealed if booking was ever initiated (always is, but
-            # keep this explicit for future status expansions)
-            phone = provider.phone_en if provider else None
-            result.append(BookingListItem(
-                booking_id=b.id,
-                status=b.status,
-                skill_id=b.skill_id,
-                created_at=b.created_at,
-                work_schedule=b.work_schedule,
-                other_party_name=provider.name_en if provider else "—",
-                other_party_phone=phone,
-            ))
-        return result
-```
-
 ### `app/services/search_service.py`
 
 ```python
@@ -540,7 +328,7 @@ class SearchService:
 
     @staticmethod
     async def find_providers(
-        skill_category_id: int,
+        skill_id: int,
         seeker_lat: float,
         seeker_lng: float,
         search_radius_km: int,
@@ -554,7 +342,7 @@ class SearchService:
         search_repo = SearchRepository(db)
 
         rows = await search_repo.find_providers(
-            skill_category_id=skill_category_id,
+            skill_id=skill_id,
             seeker_lat=seeker_lat,
             seeker_lng=seeker_lng,
             search_radius_km=search_radius_km,
@@ -587,7 +375,7 @@ class SearchService:
         # Batch-fetch names and skills in 2 queries (not N queries)
         names = await search_repo.get_provider_names(provider_ids, lang)
         skills_map = await search_repo.get_provider_skill_names(
-            provider_ids, skill_category_id, lang
+            provider_ids, skill_id, lang
         )
 
         providers = [
@@ -742,7 +530,7 @@ router = APIRouter()
 
 @router.get("/providers")
 async def search_providers(
-    skill_category_id: int = Query(..., description="Category ID to search within"),
+    skill_id: int = Query(..., description="Skill ID selected from dropdown"),
     seeker_lat: float = Query(..., description="Seeker's current latitude"),
     seeker_lng: float = Query(..., description="Seeker's current longitude"),
     search_radius_km: int = Query(1, ge=1, le=50, description="Search radius in KM"),
