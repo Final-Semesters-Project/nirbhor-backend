@@ -1,14 +1,12 @@
-from typing import Annotated
 from uuid import UUID
-from fastapi import APIRouter, Depends, Header
+from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
-from app.api.dependencies import get_current_user, get_current_seeker, get_current_provider
-from app.models.user_model import Role, User
+from app.api.dependencies import get_current_seeker, get_current_provider
+from app.models.user_model import User
 from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema
 from app.services.booking_service import BookingService
-from app.core.exceptions import DomainValidationError
 from app.core.i18n import t
 
 router = APIRouter(prefix="/bookings", tags=["Bookings"])
