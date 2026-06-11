@@ -57,18 +57,13 @@ async def respond_to_booking(
     )
 
 
-@router.get("/provider/me",
-            # response_model=list[BookingListItem]
-            )
+@router.get("/provider/me", response_model=list[BookingListItem])
 async def provider_incoming_bookings(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_provider),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
     """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
-    if current_user.role != Role.PROVIDER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
     return await BookingService.get_provider_incoming(
         provider_id=current_user.id,
         db=db,
@@ -78,14 +73,11 @@ async def provider_incoming_bookings(
 
 @router.get("/seeker/me", response_model=list[BookingListItem])
 async def seeker_booking_history(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
     """Seeker's full booking history including open INITIATED entries."""
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
     return await BookingService.get_seeker_history(
         seeker_id=current_user.id,
         db=db,
