@@ -57,20 +57,3 @@ class BookingListItem(BaseModel):
     other_party_phone: str | None  # None until INITIATED for seeker view
 
     model_config = ConfigDict(from_attributes=True)
-
-
-class ProviderSearchResult(BaseModel):
-    """One provider card returned from the search endpoint."""
-    user_id: UUID
-    name: str                       # localized (en or bn)
-    skill_names: list[str]          # localized skill names
-    verification_level: str
-    average_rating: float | None
-    distance_km: float
-    working_radius_km: int
-    has_smartphone: bool
-    is_available: bool
-    last_active_at: datetime | None
-    # phone is intentionally excluded — revealed only after booking initiation
-
-    model_config = ConfigDict(from_attributes=True)
