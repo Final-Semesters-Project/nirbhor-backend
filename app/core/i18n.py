@@ -72,6 +72,7 @@ MESSAGES = {
         "work_schedule_required": "work schedule is required when hired is true.",
         "work_schedule_must_be_future": "work schedule must be a future time.",
         "provider_unskilled": "This skill is not available for this provider.",
+        "search_radius_expanded_warning": "Search radius expanded to find more providers.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -140,6 +141,7 @@ MESSAGES = {
         "work_schedule_required": "কাজের সময়সূচি প্রদান করুন।",
         "work_schedule_must_be_future": "কাজের সময়সূচি একটি পরবর্তী সময় হতে হবে।",
         "provider_unskilled": "এই স্কিল এই প্রোভাইডারের জন্য উপলব্ধ নয়।",
+        "search_radius_expanded_warning": "আরো প্রভাইডার পাওয়ার জন্য খোজার পরিধি বাড়ানো হয়েছে।",
     }
 }
 

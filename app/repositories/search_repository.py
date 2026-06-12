@@ -1,5 +1,5 @@
+from dataclasses import dataclass
 from uuid import UUID
-
 from geoalchemy2 import Geography
 from sqlalchemy.ext.asyncio import AsyncSession
 from datetime import datetime, timezone, timedelta
@@ -9,6 +9,21 @@ from app.models.provider_profile_model import ProviderProfile, VerificationLevel
 from app.models.provider_skill_link_model import ProviderSkillLink
 from app.models.skill_model import Skill
 from app.models.user_model import User
+
+
+@dataclass
+class ProviderSearchRow:
+    """Mirrors exactly the columns selected in find_providers query."""
+    user_id: UUID
+    name: str
+    last_active_at: datetime | None
+    working_radius_km: int
+    verification_level: VerificationLevel
+    average_rating: float | None
+    has_smartphone: bool
+    is_available: bool
+    distance_km: float
+    score: float
 
 
 class SearchRepository:
@@ -21,7 +36,8 @@ class SearchRepository:
         seeker_lat: float,
         seeker_lng: float,
         search_radius_km: int,
-    ) -> list[dict]:
+        lang: str,
+    ) -> list[ProviderSearchRow]:
         """
         Core geospatial search with inline ranking score.
 
@@ -49,9 +65,7 @@ class SearchRepository:
         # func.extract("epoch", interval) converts a time difference to seconds
         # days_inactive: a float like 2.5 (days)
         days_inactive = func.extract(
-            "epoch",
-            now - User.last_active_at
-        ) / 86400  # convert seconds to days
+            "epoch", now - User.last_active_at) / 86400  # convert seconds to days
 
         # ── Activity bonus/penalty as a CASE expression ───────────────────────
         # case() works like SQL CASE WHEN ... THEN ... END
@@ -111,9 +125,13 @@ class SearchRepository:
             + (recent_bookings_sq * 0.5)
         )
 
+        name_col = func.coalesce(
+            User.name_bn, User.name_en) if lang == "bn" else User.name_en
+
         stmt = (
             select(
                 User.id.label("user_id"),
+                name_col.label("name"),
                 User.last_active_at,
                 ProviderProfile.working_radius_km,
                 ProviderProfile.verification_level,
@@ -139,6 +157,14 @@ class SearchRepository:
                     radius_m,
                 )
             )
+            # checks if seekers location is within provider's working radius
+            .where(
+                ST_DWithin(
+                    ProviderProfile.base_location.cast(Geography),
+                    seeker_point.cast(Geography),
+                    ProviderProfile.working_radius_km * 1000,  # Provider's capacity
+                )
+            )
             # exclude 60+ day inactive providers entirely
             .where(
                 User.last_active_at >= now - timedelta(days=60)
@@ -150,38 +176,30 @@ class SearchRepository:
             # PostgreSQL requires the distinct column to appear first in ORDER BY,
             # so we order by User.id first, then ranking_score.
             .distinct(User.id)
-            .order_by(ranking_score.desc())
+            .order_by(User.id, ranking_score.desc())
         )
 
         result = await self.db.execute(stmt)
-        return [dict(row._mapping) for row in result.all()]
+        # return [dict(row._mapping) for row in result.all()]
+        # return result.all()
+        return [
+            ProviderSearchRow(**dict(row._mapping))
+            for row in result.all()
+        ]
 
-    async def get_provider_names(
-        self, provider_ids: list[UUID], lang: str
-    ) -> dict[UUID, str]:
-        if not provider_ids:
-            return {}
-        name_col = func.coalesce(User.name_bn, User.name_en).label("name") \
-            if lang == "bn" else User.name_en.label("name")
-        result = await self.db.execute(
-            select(User.id, name_col).where(User.id.in_(provider_ids))
-        )
-        return {row.id: row.name for row in result.all()}
-
-    async def get_provider_skill_names(
-        self, provider_ids: list[UUID], skill_id: int, lang: str
-    ) -> dict[UUID, list[str]]:
+    async def get_skill_name(
+        self, skill_id: int, lang: str
+    ) -> str:
         """
         For the given skill_id, fetch its name once and return it for all
         providers. A single skill search means all providers share the same
         skill name — no need to query per provider.
         """
-        if not provider_ids:
-            return {}
         name_col = Skill.name_bn if lang == "bn" else Skill.name_en
         result = await self.db.execute(
             select(name_col).where(Skill.id == skill_id)
         )
         skill_name = result.scalar_one_or_none() or ""
         # Every provider in results has this skill
-        return {pid: [skill_name] for pid in provider_ids}
+        # return {pid: [skill_name] for pid in provider_ids}
+        return skill_name
