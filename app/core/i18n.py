@@ -73,6 +73,8 @@ MESSAGES = {
         "work_schedule_must_be_future": "work schedule must be a future time.",
         "provider_unskilled": "This skill is not available for this provider.",
         "search_radius_expanded_warning": "Search radius expanded to find more providers.",
+        "removed_providers_skill": "Your skill has been removed successfully.",
+        "skill_link_not_found": "This skill is not linked to your account.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -142,6 +144,8 @@ MESSAGES = {
         "work_schedule_must_be_future": "কাজের সময়সূচি একটি পরবর্তী সময় হতে হবে।",
         "provider_unskilled": "এই স্কিল এই প্রোভাইডারের জন্য উপলব্ধ নয়।",
         "search_radius_expanded_warning": "আরো প্রভাইডার পাওয়ার জন্য খোজার পরিধি বাড়ানো হয়েছে।",
+        "removed_providers_skill": "আপনার দক্ষতা সফলভাবে মুছে ফেলা হয়েছে।",
+        "skill_link_not_found": "এই দক্ষতাটি আপনার অ্যাকাউন্টে যুক্ত নয়।",
     }
 }
 

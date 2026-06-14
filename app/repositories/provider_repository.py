@@ -1,5 +1,5 @@
-import uuid
-from sqlalchemy import select, func, and_
+from uuid import UUID
+from sqlalchemy import select, func, and_, delete
 from sqlalchemy.orm import joinedload
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.booking_model import Booking
@@ -15,7 +15,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
 
     async def create_profile(
         self,
-        user_id: uuid.UUID,
+        user_id: UUID,
         latitude: float,
         longitude: float,
         working_radius_km: int,
@@ -40,7 +40,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
         return profile
 
     async def add_skills(
-        self, provider_id: uuid.UUID, skill_ids: list[int]
+        self, provider_id: UUID, skill_ids: list[int]
     ) -> None:
         for skill_id in skill_ids:
             link = ProviderSkillLink(
@@ -50,10 +50,38 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             self.db.add(link)
         await self.db.flush()
 
-    async def provider_profile_data_for_get_me(self, user_id: uuid.UUID):
+    # async def get_skill_link(
+    #         self,
+    #         provider_id: UUID,
+    #         skill_id: int
+    # ) -> ProviderSkillLink | None:
+    #     stmt = (
+    #         select(ProviderSkillLink)
+    #         .where(ProviderSkillLink.provider_id == provider_id)
+    #         .where(ProviderSkillLink.skill_id == skill_id)
+    #     )
+    #     result = await self.db.execute(stmt)
+    #     return result.scalar_one_or_none()
+
+    # async def remove_skill(
+    #         self, provider_id: UUID, skill_id: int
+    # ):
+    #     result = await self.db.execute(
+    #         delete(ProviderSkillLink)
+    #         .where(
+    #             and_(
+    #                 ProviderSkillLink.provider_id == provider_id,
+    #                 ProviderSkillLink.skill_id == skill_id
+    #             )
+    #         )
+    #     )
+    #     await self.db.flush()
+    #     return result
+
+    async def provider_profile_data_for_get_me(self, user_id: UUID):
         return await self.db.get(ProviderProfile, user_id)
 
-    async def get_dashboard_data(self, user_id: uuid.UUID):
+    async def get_dashboard_data(self, user_id: UUID):
         query = select(ProviderProfile)\
             .options(
                 joinedload(ProviderProfile.user),
@@ -64,7 +92,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
         result = await self.db.execute(query)
         return result.scalars().first()
 
-    async def get_total_jobs_done(self, user_id: uuid.UUID):
+    async def get_total_jobs_done(self, user_id: UUID):
         # count total jobs done by provider from bookings table where status is completed
         query = select(func.count(Booking.id)).where(
             and_(

@@ -1,6 +1,5 @@
-import uuid
+from uuid import UUID
 from datetime import datetime, timezone
-
 from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from loguru import logger
 from sqlalchemy import func
@@ -11,9 +10,11 @@ from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
 from app.models.provider_profile_model import ProviderProfile, VerificationStatus
+from app.models.provider_skill_link_model import ProviderSkillLink
 from app.models.skill_model import Skill
 from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
 from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
@@ -78,7 +79,7 @@ class ProviderService:
 
     @staticmethod
     async def update_provider_profile(
-        provider_id: uuid.UUID,
+        provider_id: UUID,
         lang: str,
         db: AsyncSession,
         update_data: ProviderProfileUpdateSchema
@@ -204,7 +205,7 @@ class ProviderService:
 
     @staticmethod
     async def add_new_skills(
-        provider_id: uuid.UUID,
+        provider_id: UUID,
         payload: AddNewSkillSchema,
         db: AsyncSession,
         lang: str
@@ -277,4 +278,85 @@ class ProviderService:
             await db.rollback()
             logger.error(
                 f"Unexpected error in adding new skill to provider: {e}")
+            raise
+
+    @staticmethod
+    async def delete_providers_skill(
+        provider_id: UUID,
+        skill_id: int,
+        db: AsyncSession,
+        lang: str
+    ) -> dict:
+
+        try:
+            provider_repo = ProviderRepository(db)
+            provider_skill_link_repo = ProviderSkillLinkRepository(db)
+            provider = await provider_repo.get_by_id(provider_id)
+
+            if provider is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=t("user_not_found", lang),
+                )
+
+            # search for the existing skill link
+            skill_link = await provider_skill_link_repo.get_provider_skill_link(provider_id=provider_id, skill_id=skill_id)
+
+            if skill_link is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=t("skill_link_not_found", lang),
+                )
+
+            await provider_skill_link_repo.delete(skill_link)
+
+            await db.commit()
+            logger.success(
+                f"Removed skill for this provider. Id: {provider.user_id} and skill: {skill_id}")
+
+            return {
+                "message": t("removed_providers_skill", lang)
+            }
+        except IntegrityError as e:
+            await db.rollback()
+            raw = str(e.orig) if e.orig else str(e)
+            # translates according to lang
+            readable = parse_integrity_error(raw, lang)
+
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
+            # the actual asyncpg exception — handle both cases
+            is_fk = (
+                isinstance(e.orig, ForeignKeyViolationError)
+                or "ForeignKeyViolationError" in raw
+            )
+            is_unique = (
+                isinstance(e.orig, UniqueViolationError)
+                or "UniqueViolationError" in raw
+            )
+
+            # unwrap the original asyncpg exception to route correctly
+            if is_fk:
+                logger.warning(
+                    f"FK violation in removing a skill of provider: {raw}")
+                raise DomainValidationError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            if is_unique:
+                logger.warning(
+                    f"Unique violation in removing a skill of provider: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable,
+                    raw_error=raw
+                )
+            logger.error(
+                f"IntegrityError in removing a skill of provider: {raw}")
+            raise DomainIntegrityError(error_message=readable, raw_error=raw)
+        except (DomainIntegrityError, DomainValidationError):
+            # let domain exceptions bubble up untouched to the global handler
+            raise
+        except Exception as e:
+            await db.rollback()
+            logger.error(
+                f"Unexpected error in removing a skill of provider: {e}")
             raise

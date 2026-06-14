@@ -59,7 +59,8 @@ class UserService:
                 nid_url_back=profile.nid_url_back,
                 warning_status=profile.warning_status,
                 ai_review_summary=localized_summary,
-                created_at=current_user.created_at
+                created_at=current_user.created_at,
+                verification_rejection_reason=profile.verification_rejection_reason
             )
 
          # admin
