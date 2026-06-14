@@ -1,4 +1,5 @@
 from fastapi.responses import JSONResponse
+from loguru import logger
 from app.api.v1.router import api_router
 from fastapi import FastAPI, Request, status
 from app.core.config import settings
@@ -18,8 +19,21 @@ async def lifespan(app: FastAPI):
     setup_logging()
     async with AsyncSessionLocal() as db:
         await seed_categories_and_skills(db)
-    yield
+
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(send_booking_followup_notifications,
+                      "interval", minutes=5)
+    scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+    scheduler.start()
+    logger.info("APScheduler started successfully inside lifespan startup.")
+
     # runs on shutdown, after all requests
+    yield
+    logger.info("Shutting down APScheduler..")
+    scheduler.shutdown()
 
 
 # check if in production or development
