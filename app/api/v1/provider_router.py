@@ -58,4 +58,18 @@ async def add_skills(
     return await ProviderService.add_new_skills(db=db, lang=lang, provider_id=current_user.id, payload=payload)
 
 
-#
+# remove a linked skill from the provider profile
+@router.delete(
+    "/me/remove_skill",
+    summary="Remove a linked skill from provider profile",
+    status_code=status.HTTP_200_OK,
+    response_model=dict
+)
+async def remove_a_skill(
+    skill_id: int,
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    return await ProviderService.delete_providers_skill(
+        db=db, lang=lang, provider_id=current_user.id, skill_id=skill_id)

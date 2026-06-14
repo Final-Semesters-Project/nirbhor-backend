@@ -62,5 +62,6 @@ async def expire_stale_bookings():
         )
         expired = len(result.all())
         await db.commit()
+        logger.info(expired)
         if expired:
             logger.info(f"Nightly cleanup: expired {expired} stale bookings")
