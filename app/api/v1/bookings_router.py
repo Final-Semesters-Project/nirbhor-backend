@@ -33,28 +33,6 @@ async def initiate_booking(
     )
 
 
-@router.patch("/{booking_id}/respond", status_code=200)
-async def respond_to_booking(
-    booking_id: UUID,
-    data: BookingRespondFromNotificationSchema,
-    current_user: User = Depends(get_current_seeker),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker responds to the FCM follow-up.
-    hired=true  → IN_PROGRESS + work_schedule required
-    hired=false → CANCELLED
-    """
-    return await BookingService.respond_to_booking(
-        booking_id=booking_id,
-        data=data,
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-
-
 @router.get("/provider/me", response_model=list[BookingListItem])
 async def provider_incoming_bookings(
     current_user: User = Depends(get_current_provider),
@@ -81,6 +59,29 @@ async def seeker_booking_history(
         db=db,
         lang=lang,
     )
+
+
+@router.patch("/{booking_id}/respond", status_code=200)
+async def respond_to_booking(
+    booking_id: UUID,
+    data: BookingRespondFromNotificationSchema,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Seeker responds to the FCM follow-up.
+    hired=true  → IN_PROGRESS + work_schedule required
+    hired=false → CANCELLED
+    """
+    return await BookingService.respond_to_booking(
+        booking_id=booking_id,
+        data=data,
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
 """
 accept_language: Annotated[str | None,
                                Header(alias="Accept-Language")] = "en"
