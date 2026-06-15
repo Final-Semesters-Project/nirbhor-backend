@@ -23,5 +23,6 @@ class ClaimedBroadcastResponse(BaseModel):
     broadcast_id: UUID
     status: BroadcastStatus
     yours: bool
+    seeker_phone: str
 
     model_config = ConfigDict(from_attributes=True)
