@@ -7,7 +7,7 @@ from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
-from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastResponse
+from app.schemas.urgent_schema import ClaimedBroadcastResponse, UrgentBroadcastCreateSchema, UrgentBroadcastResponse
 from app.services.urgent_service import UrgentService
 
 
@@ -38,7 +38,7 @@ async def create_urgent_broadcast(
     )
 
 
-@router.post("/broadcast/{broadcast_id}/claim", status_code=200)
+@router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponse)
 async def claim_urgent_broadcast(
     broadcast_id: UUID,
     current_user: User = Depends(get_current_provider),

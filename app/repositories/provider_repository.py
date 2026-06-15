@@ -50,34 +50,6 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             self.db.add(link)
         await self.db.flush()
 
-    # async def get_skill_link(
-    #         self,
-    #         provider_id: UUID,
-    #         skill_id: int
-    # ) -> ProviderSkillLink | None:
-    #     stmt = (
-    #         select(ProviderSkillLink)
-    #         .where(ProviderSkillLink.provider_id == provider_id)
-    #         .where(ProviderSkillLink.skill_id == skill_id)
-    #     )
-    #     result = await self.db.execute(stmt)
-    #     return result.scalar_one_or_none()
-
-    # async def remove_skill(
-    #         self, provider_id: UUID, skill_id: int
-    # ):
-    #     result = await self.db.execute(
-    #         delete(ProviderSkillLink)
-    #         .where(
-    #             and_(
-    #                 ProviderSkillLink.provider_id == provider_id,
-    #                 ProviderSkillLink.skill_id == skill_id
-    #             )
-    #         )
-    #     )
-    #     await self.db.flush()
-    #     return result
-
     async def provider_profile_data_for_get_me(self, user_id: UUID):
         return await self.db.get(ProviderProfile, user_id)
 

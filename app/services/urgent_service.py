@@ -5,6 +5,7 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.models.urgent_broadcast_model import BroadcastStatus
 from app.repositories.urgent_repository import UrgentBroadcastRepository
+from app.repositories.user_repository import UserRepository
 from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastResponse, ClaimedBroadcastResponse
 
 
@@ -67,11 +68,17 @@ class UrgentService:
         Uses with_for_update() pessimistic lock in the repository.
         """
         urgent_repo = UrgentBroadcastRepository(db)
+        user_repo = UserRepository(db)
 
         broadcast = await urgent_repo.claim_broadcast(broadcast_id, provider_id)
 
         if not broadcast:
             raise DomainValidationError(t("broadcast_not_found", lang))
+
+        seeker = await user_repo.get_by_id(broadcast.seeker_id)
+
+        if not seeker:
+            raise DomainIntegrityError(t("seeker_not_found", lang))
 
         # If broadcast was already claimed or expired by the time we locked it
         if broadcast.status == BroadcastStatus.CLAIMED:
@@ -83,9 +90,9 @@ class UrgentService:
                         broadcast_id=broadcast.id,
                         status=BroadcastStatus.CLAIMED,
                         yours=True,
+                        seeker_phone=seeker.phone_en,
                     )
                 )
-            # {"broadcast_id": broadcast_id, "status": "CLAIMED", "yours": True}
             # Another provider claimed it first
             raise DomainIntegrityError(t("broadcast_already_claimed", lang))
 
@@ -100,10 +107,12 @@ class UrgentService:
         # TODO: Notify seeker that provider is on the way
         # await NotificationService.send_broadcast_claimed(broadcast.seeker_id, provider_id)
 
+        # FIX: Shouldn't we send the seeker phone number to the provider when he claims the broadcast? so that they can communicate? After that if the provider refuse to come then the seeker can initiate another broadcast?
         return (
             ClaimedBroadcastResponse(
                 broadcast_id=broadcast.id,
                 status=broadcast.status,
                 yours=True,
+                seeker_phone=seeker.phone_en
             )
         )
