@@ -8,7 +8,7 @@ from app.core.integrity_error_parser import parse_integrity_error
 from app.models.category_model import Category
 from app.models.skill_model import Skill
 from app.repositories.skill_repository import SkillRepository
-from app.schemas.skill_schema import SkillCreateSchema
+from app.schemas.skill_schema import SkillCreateSchema, SkillResponseSchema
 from fastapi import HTTPException, status
 
 
@@ -95,3 +95,18 @@ class SkillService:
             await db.rollback()
             logger.critical(f"Unexpected error in provider registration: {e}")
             raise
+
+    @staticmethod
+    async def get_skills_by_category(
+        category_id: int, db: AsyncSession, lang: str
+    ) -> list[SkillResponseSchema]:
+        repo = SkillRepository(db)
+        skills = await repo.get_skills_by_category(category_id)
+        return [
+            SkillResponseSchema(
+                id=s.id,
+                name=s.name_bn if lang == "bn" else s.name_en,
+                category_id=s.category_id,
+            )
+            for s in skills
+        ]

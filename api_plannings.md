@@ -32,52 +32,6 @@ app/
 
 ## 1. Updated Schemas
 
-### `app/schemas/category_schema.py` — new
-
-```python
-from pydantic import BaseModel
-
-
-class CategoryResponse(BaseModel):
-    id: int
-    name: str   # localized
-
-    model_config = {"from_attributes": True}
-
-
-class SkillResponse(BaseModel):
-    id: int
-    name: str   # localized
-    category_id: int
-
-    model_config = {"from_attributes": True}
-```
-
-### `app/schemas/booking_schema.py` — add single booking detail
-
-```python
-# Add this to your existing booking_schema.py
-
-class BookingDetailResponse(BaseModel):
-    """Full detail for a single booking — used by both seeker and provider."""
-    booking_id: UUID
-    status: BookingStatus
-    skill_id: int
-    created_at: datetime
-    call_unlocked_at: datetime | None
-    confirmed_at: datetime | None
-    work_schedule: datetime | None
-    completed_at: datetime | None
-    # The other party info — seeker sees provider, provider sees seeker
-    other_party_name: str
-    other_party_phone: str | None
-    # Location of the job (shown to provider when IN_PROGRESS)
-    job_latitude: float | None
-    job_longitude: float | None
-
-    model_config = {"from_attributes": True}
-```
-
 ### `app/schemas/review_schema.py` — new
 
 ```python
@@ -112,48 +66,6 @@ class ReviewResponse(BaseModel):
 ---
 
 ## 2. Repositories
-
-### `app/repositories/category_repository.py` — new
-
-```python
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-
-from app.models.category import Category
-from app.models.skill import Skill
-
-
-class CategoryRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
-    async def get_all_categories(self) -> list[Category]:
-        result = await self.db.execute(
-            select(Category).order_by(Category.id)
-        )
-        return list(result.scalars().all())
-
-    async def get_skills_by_category(self, category_id: int) -> list[Skill]:
-        result = await self.db.execute(
-            select(Skill)
-            .where(Skill.category_id == category_id)
-            .order_by(Skill.id)
-        )
-        return list(result.scalars().all())
-```
-
-### `app/repositories/booking_repository.py` — add `get_single_booking`
-
-```python
-# Add this method to BookingRepository
-
-async def get_single_booking(self, booking_id: UUID) -> Booking | None:
-    """Fetch one booking by ID. No joins — service handles party lookup."""
-    result = await self.db.execute(
-        select(Booking).where(Booking.id == booking_id)
-    )
-    return result.scalar_one_or_none()
-```
 
 ### `app/repositories/review_repository.py` — new
 
@@ -234,48 +146,6 @@ class ReviewRepository(BaseRepository[Review]):
 ---
 
 ## 3. Services
-
-### `app/services/category_service.py` — new
-
-```python
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.repositories.category_repository import CategoryRepository
-from app.schemas.category_schema import CategoryResponse, SkillResponse
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
-
-
-class CategoryService:
-    @staticmethod
-    async def get_all_categories(
-        db: AsyncSession, lang: str
-    ) -> list[CategoryResponse]:
-        repo = CategoryRepository(db)
-        categories = await repo.get_all_categories()
-        return [
-            CategoryResponse(
-                id=c.id,
-                name=c.name_bn if lang == "bn" else c.name_en,
-            )
-            for c in categories
-        ]
-
-    @staticmethod
-    async def get_skills_by_category(
-        category_id: int, db: AsyncSession, lang: str
-    ) -> list[SkillResponse]:
-        repo = CategoryRepository(db)
-        skills = await repo.get_skills_by_category(category_id)
-        return [
-            SkillResponse(
-                id=s.id,
-                name=s.name_bn if lang == "bn" else s.name_en,
-                category_id=s.category_id,
-            )
-            for s in skills
-        ]
-```
 
 ### `app/services/booking_service.py` — add `get_single_booking`
 
@@ -423,41 +293,6 @@ class ReviewService:
 
 ## 4. Routers
 
-### `app/api/v1/categories.py` — new
-
-```python
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.session import get_db_session
-from app.core.i18n import get_lang
-from app.services.category_service import CategoryService
-from app.schemas.category_schema import CategoryResponse, SkillResponse
-
-router = APIRouter()
-
-
-@router.get("", response_model=list[CategoryResponse])
-async def get_categories(
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """All categories for the seeker home page dropdown."""
-    return await CategoryService.get_all_categories(db=db, lang=lang)
-
-
-@router.get("/{category_id}/skills", response_model=list[SkillResponse])
-async def get_skills_by_category(
-    category_id: int,
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """Skills under a category — populated after seeker selects a category."""
-    return await CategoryService.get_skills_by_category(
-        category_id=category_id, db=db, lang=lang
-    )
-```
-
 ### `app/api/v1/bookings.py` — add single booking endpoint
 
 ```python
@@ -533,7 +368,6 @@ async def create_review(
 ```python
 from app.api.v1 import auth, bookings, search, urgent, categories, reviews
 
-api_router.include_router(categories.router, prefix="/categories", tags=["Categories"])
 api_router.include_router(reviews.router,    prefix="/reviews",    tags=["Reviews"])
 ```
 

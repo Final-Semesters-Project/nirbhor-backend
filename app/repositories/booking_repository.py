@@ -181,3 +181,10 @@ class BookingRepository(BaseRepository[Booking]):
             .returning(Booking.id)
         )
         return len(result.all())
+
+    async def get_single_booking(self, booking_id: UUID) -> Booking | None:
+        """Fetch one booking by ID. No joins — service handles party lookup."""
+        result = await self.db.execute(
+            select(Booking).where(Booking.id == booking_id)
+        )
+        return result.scalar_one_or_none()

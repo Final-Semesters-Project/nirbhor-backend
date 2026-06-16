@@ -12,6 +12,8 @@ class SkillCreateSchema(SkillBaseSchema):
 
 
 class SkillResponseSchema(BaseModel):
-    pass
+    id: int
+    name: str   # localized
+    category_id: int
 
     model_config = ConfigDict(from_attributes=True)

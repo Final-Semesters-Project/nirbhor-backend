@@ -7,7 +7,7 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.repositories.category_repository import CategoryRepository
-from app.schemas.category_schema import CategoryCreateSchema
+from app.schemas.category_schema import CategoryCreateSchema, CategoryResponse
 
 
 class CategoryService:
@@ -48,7 +48,7 @@ class CategoryService:
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
 
-            # e.orig may be a string (SQLAlchemy asyncpg dialect behaviour) or
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
             # the actual asyncpg exception — handle both cases
             is_fk = (
                 isinstance(e.orig, ForeignKeyViolationError)
@@ -83,3 +83,17 @@ class CategoryService:
             await db.rollback()
             logger.critical(f"Unexpected error in provider registration: {e}")
             raise
+
+    @staticmethod
+    async def get_all_categories(
+        db: AsyncSession, lang: str
+    ) -> list[CategoryResponse]:
+        repo = CategoryRepository(db)
+        categories = await repo.get_all_categories()
+        return [
+            CategoryResponse(
+                id=c.id,
+                name=c.name_bn if lang == "bn" else c.name_en,
+            )
+            for c in categories
+        ]
