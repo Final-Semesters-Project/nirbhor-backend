@@ -75,6 +75,11 @@ MESSAGES = {
         "search_radius_expanded_warning": "Search radius expanded to find more providers.",
         "removed_providers_skill": "Your skill has been removed successfully.",
         "skill_link_not_found": "This skill is not linked to your account.",
+        "broadcast_expired": "No one responded. Please try a manual search or send a new broadcast.",
+        "broadcast_not_broadcasting": "This broadcast is no longer active.",
+        "review_already_exists": "You have already reviewed this booking.",
+        "review_not_eligible": "This booking is not yet completed.",
+        "booking_not_found": "Booking not found.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -146,6 +151,11 @@ MESSAGES = {
         "search_radius_expanded_warning": "আরো প্রভাইডার পাওয়ার জন্য খোজার পরিধি বাড়ানো হয়েছে।",
         "removed_providers_skill": "আপনার দক্ষতা সফলভাবে মুছে ফেলা হয়েছে।",
         "skill_link_not_found": "এই দক্ষতাটি আপনার অ্যাকাউন্টে যুক্ত নয়।",
+        "broadcast_expired": "কেউ সাড়া দেননি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন অথবা আরেকটি নতুন ব্রডকাস্ট পাঠান।",
+        "broadcast_not_broadcasting": "এই ব্রডকাস্ট আর সক্রিয় নেই।",
+        "review_already_exists": "আপনি ইতিমধ্যে এই বুকিং রিভিউ করেছেন।",
+        "review_not_eligible": "এই বুকিং এখনও সম্পন্ন হয়নি।",
+        "booking_not_found": "বুকিং পাওয়া যায়নি।",
     }
 }
 

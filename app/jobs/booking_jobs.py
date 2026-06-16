@@ -20,7 +20,7 @@ async def send_booking_followup_notifications():
     async with AsyncSessionLocal() as db:
         repo = BookingRepository(db)
         bookings = await repo.get_initiated_ready_for_followup()
-
+        logger.info("send_booking_followup_notifications")
         if not bookings:
             return
 
@@ -52,16 +52,20 @@ async def expire_stale_bookings():
     """
     async with AsyncSessionLocal() as db:
         # get the 48 hours ago timestamp from now
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
-        result = await db.execute(
-            update(Booking)
-            .where(Booking.status == BookingStatus.INITIATED)
-            .where(Booking.call_unlocked_at < cutoff)
-            .values(status=BookingStatus.AUTO_EXPIRED)
-            .returning(Booking.id)
-        )
-        expired = len(result.all())
+        # cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+        # result = await db.execute(
+        #     update(Booking)
+        #     .where(Booking.status == BookingStatus.INITIATED)
+        #     .where(Booking.call_unlocked_at < cutoff)
+        #     .values(status=BookingStatus.AUTO_EXPIRED)
+        #     .returning(Booking.id)
+        # )
+        # expired = len(result.all())
+        booking_repo = BookingRepository(db)
+        expired_count = await booking_repo.expire_stale_initiated_bookings()
         await db.commit()
-        logger.info(expired)
-        if expired:
-            logger.info(f"Nightly cleanup: expired {expired} stale bookings")
+
+        logger.info(expired_count)
+        if expired_count:
+            logger.info(
+                f"Nightly cleanup: expired {expired_count} stale bookings")

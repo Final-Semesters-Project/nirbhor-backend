@@ -148,68 +148,7 @@ app/
 
 ---
 
-## i18n keys to add
-
-```python
-"broadcast_expired":        {"en": "No one responded. Please try a manual search.", "bn": "কেউ সাড়া দেননি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন।"},
-"broadcast_not_broadcasting":{"en": "This broadcast is no longer active.",           "bn": "এই ব্রডকাস্ট আর সক্রিয় নেই।"},
-"review_already_exists":    {"en": "You have already reviewed this booking.",        "bn": "আপনি ইতিমধ্যে এই বুকিং রিভিউ করেছেন।"},
-"review_not_eligible":      {"en": "This booking is not yet completed.",             "bn": "এই বুকিং এখনও সম্পন্ন হয়নি।"},
-"booking_not_found":        {"en": "Booking not found.",                             "bn": "বুকিং পাওয়া যায়নি।"},
-```
-
----
-
 ## 1. Updated Schemas
-
-### `app/schemas/urgent_schema.py` — update claim response
-
-```python
-from pydantic import BaseModel
-from uuid import UUID
-from datetime import datetime
-from app.models.urgent_broadcast import BroadcastStatus
-
-
-class UrgentBroadcastCreateSchema(BaseModel):
-    skill_id: int
-    latitude: float
-    longitude: float
-
-
-class UrgentBroadcastResponse(BaseModel):
-    broadcast_id: UUID
-    status: BroadcastStatus
-    expires_at: datetime
-    message: str
-
-    model_config = {"from_attributes": True}
-
-
-class UrgentBroadcastDetailResponse(BaseModel):
-    """Returned when provider fetches broadcast details after FCM tap."""
-    broadcast_id: UUID
-    status: BroadcastStatus
-    skill_id: int
-    expires_at: datetime
-    seeker_latitude: float | None   # so provider can navigate
-    seeker_longitude: float | None
-
-    model_config = {"from_attributes": True}
-
-
-class UrgentClaimResponse(BaseModel):
-    """
-    Returned to provider after successfully claiming a broadcast.
-    Includes seeker phone so provider can call immediately.
-    """
-    broadcast_id: UUID
-    status: str
-    seeker_name: str
-    seeker_phone: str   # revealed only to the claiming provider
-
-    model_config = {"from_attributes": True}
-```
 
 ### `app/schemas/category_schema.py` — new
 
@@ -291,94 +230,6 @@ class ReviewResponse(BaseModel):
 ---
 
 ## 2. Repositories
-
-### `app/repositories/urgent_repository.py` — update `claim_broadcast`
-
-```python
-# Replace claim_broadcast method with this version that fetches seeker info
-
-async def claim_broadcast(
-    self,
-    broadcast_id: UUID,
-    provider_id: UUID,
-) -> tuple[UrgentBroadcast | None, str | None, str | None]:
-    """
-    Atomic claim with pessimistic lock.
-    Returns (broadcast, seeker_name, seeker_phone).
-    seeker_name and seeker_phone are None if claim fails.
-    """
-    from app.models.user import User
-
-    result = await self.db.execute(
-        select(UrgentBroadcast)
-        .where(UrgentBroadcast.id == broadcast_id)
-        .with_for_update()
-    )
-    broadcast = result.scalar_one_or_none()
-
-    if not broadcast:
-        return None, None, None
-
-    if broadcast.status != BroadcastStatus.BROADCASTING:
-        return broadcast, None, None
-
-    broadcast.status = BroadcastStatus.CLAIMED
-    broadcast.claimed_by_provider_id = provider_id
-    await self.db.flush()
-
-    # Fetch seeker details to return to the claiming provider
-    seeker_result = await self.db.execute(
-        select(User.name_en, User.phone_en)
-        .where(User.id == broadcast.seeker_id)
-    )
-    seeker_row = seeker_result.first()
-    seeker_name = seeker_row.name_en if seeker_row else "—"
-    seeker_phone = seeker_row.phone_en if seeker_row else None
-
-    return broadcast, seeker_name, seeker_phone
-
-
-async def get_broadcast_by_id(self, broadcast_id: UUID) -> UrgentBroadcast | None:
-    """Fetch a broadcast for the detail view."""
-    result = await self.db.execute(
-        select(UrgentBroadcast).where(UrgentBroadcast.id == broadcast_id)
-    )
-    return result.scalar_one_or_none()
-
-
-async def expire_stale_broadcasts(self) -> list[UUID]:
-    """
-    Mark all BROADCASTING rows past expires_at as EXPIRED.
-    Returns list of seeker_ids to notify.
-    Called by APScheduler every minute.
-    """
-    from sqlalchemy import update
-    from datetime import datetime, timezone
-
-    now = datetime.now(timezone.utc)
-
-    # Fetch seeker_ids before updating so we can notify them
-    stale = await self.db.execute(
-        select(UrgentBroadcast.id, UrgentBroadcast.seeker_id)
-        .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
-        .where(UrgentBroadcast.expires_at < now)
-    )
-    rows = stale.all()
-
-    if not rows:
-        return []
-
-    stale_ids = [r.id for r in rows]
-    seeker_ids = [r.seeker_id for r in rows]
-
-    await self.db.execute(
-        update(UrgentBroadcast)
-        .where(UrgentBroadcast.id.in_(stale_ids))
-        .values(status=BroadcastStatus.EXPIRED)
-    )
-
-    return seeker_ids
-```
 
 ### `app/repositories/category_repository.py` — new
 
@@ -505,92 +356,7 @@ class ReviewRepository(BaseRepository[Review]):
 ### `app/services/urgent_service.py` — update `claim_broadcast`
 
 ```python
-@staticmethod
-async def claim_broadcast(
-    broadcast_id: UUID,
-    provider_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> UrgentClaimResponse:
-    urgent_repo = UrgentRepository(db)
 
-    broadcast, seeker_name, seeker_phone = await urgent_repo.claim_broadcast(
-        broadcast_id, provider_id
-    )
-
-    if not broadcast:
-        raise DomainValidationError(t("broadcast_not_found", lang))
-
-    if broadcast.status == BroadcastStatus.EXPIRED:
-        raise DomainValidationError(t("broadcast_not_found", lang))
-
-    if broadcast.status == BroadcastStatus.CLAIMED:
-        if broadcast.claimed_by_provider_id == provider_id:
-            # Idempotent: this provider already claimed it (duplicate tap)
-            # Re-fetch seeker info since we didn't get it from the lock path
-            from app.models.user import User
-            from sqlalchemy import select
-            row = await db.execute(
-                select(User.name_en, User.phone_en)
-                .where(User.id == broadcast.seeker_id)
-            )
-            r = row.first()
-            await db.commit()
-            return UrgentClaimResponse(
-                broadcast_id=broadcast_id,
-                status="CLAIMED",
-                seeker_name=r.name_en if r else "—",
-                seeker_phone=r.phone_en if r else "",
-            )
-        raise DomainIntegrityError(t("broadcast_already_claimed", lang))
-
-    await db.commit()
-    logger.info(f"Broadcast {broadcast_id} claimed by provider {provider_id}")
-
-    # TODO: notify seeker via FCM that a provider is coming
-    # await NotificationService.send_broadcast_claimed(broadcast.seeker_id, provider_id)
-
-    return UrgentClaimResponse(
-        broadcast_id=broadcast_id,
-        status="CLAIMED",
-        seeker_name=seeker_name or "—",
-        seeker_phone=seeker_phone or "",
-    )
-
-
-@staticmethod
-async def get_broadcast(
-    broadcast_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> UrgentBroadcastDetailResponse:
-    """
-    Provider fetches broadcast details after tapping FCM notification.
-    Returns location so provider can navigate.
-    """
-    from geoalchemy2.shape import to_shape
-
-    urgent_repo = UrgentRepository(db)
-    broadcast = await urgent_repo.get_broadcast_by_id(broadcast_id)
-
-    if not broadcast:
-        raise DomainValidationError(t("broadcast_not_found", lang))
-
-    # Extract lat/lng from the PostGIS point
-    lat, lng = None, None
-    if broadcast.location is not None:
-        point = to_shape(broadcast.location)
-        lng = point.x   # PostGIS stores as (lng, lat)
-        lat = point.y
-
-    return UrgentBroadcastDetailResponse(
-        broadcast_id=broadcast.id,
-        status=broadcast.status,
-        skill_id=broadcast.skill_id,
-        expires_at=broadcast.expires_at,
-        seeker_latitude=lat,
-        seeker_longitude=lng,
-    )
 ```
 
 ### `app/services/category_service.py` — new
@@ -605,7 +371,6 @@ from app.core.i18n import t
 
 
 class CategoryService:
-
     @staticmethod
     async def get_all_categories(
         db: AsyncSession, lang: str
@@ -845,29 +610,6 @@ async def get_booking_detail(
     )
 ```
 
-### `app/api/v1/urgent.py` — add GET broadcast endpoint
-
-```python
-# Add this to your existing urgent router
-
-@router.get("/broadcast/{broadcast_id}", response_model=UrgentBroadcastDetailResponse)
-async def get_broadcast_detail(
-    broadcast_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Provider fetches broadcast details after tapping the FCM notification.
-    Returns skill, status, and seeker coordinates for navigation.
-    """
-    return await UrgentService.get_broadcast(
-        broadcast_id=broadcast_id,
-        db=db,
-        lang=lang,
-    )
-```
-
 ### `app/api/v1/reviews.py` — new
 
 ```python
@@ -913,40 +655,7 @@ async def create_review(
 ### `app/jobs/urgent_jobs.py` — new
 
 ```python
-from loguru import logger
 
-from app.db.session import AsyncSessionLocal
-from app.repositories.urgent_repository import UrgentRepository
-
-
-async def expire_stale_broadcasts():
-    """
-    Runs every minute via APScheduler.
-    Marks BROADCASTING records past expires_at as EXPIRED.
-    Sends FCM to seekers to notify them nobody responded.
-
-    Why every minute: broadcasts expire after 5 minutes.
-    A 1-minute polling interval means max 1 minute of extra wait
-    before the seeker learns nobody responded — acceptable.
-    """
-    async with AsyncSessionLocal() as db:
-        repo = UrgentRepository(db)
-        seeker_ids = await repo.expire_stale_broadcasts()
-
-        if not seeker_ids:
-            return
-
-        await db.commit()
-
-        logger.info(
-            f"Expired {len(seeker_ids)} stale broadcasts, "
-            f"notifying seekers: {seeker_ids}"
-        )
-
-        for seeker_id in seeker_ids:
-            # TODO: send FCM to seeker
-            # await NotificationService.send_broadcast_expired(seeker_id)
-            logger.info(f"[stub] Notifying seeker {seeker_id}: no one responded")
 ```
 
 ### Register in `main.py` lifespan

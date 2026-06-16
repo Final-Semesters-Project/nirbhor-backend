@@ -1,7 +1,7 @@
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
+from sqlalchemy import select, func, update
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from sqlalchemy.orm import selectinload
 from app.models.booking_model import Booking, BookingStatus
@@ -164,3 +164,20 @@ class BookingRepository(BaseRepository[Booking]):
             .order_by(Booking.created_at.desc())
         )
         return list(result.scalars().all())
+
+    async def expire_stale_initiated_bookings(self):
+        """
+        Runs nightly at midnight via APScheduler.
+        INITIATED bookings older than 48 hours → AUTO_EXPIRED.
+        This is unchanged from the original design.
+        """
+        # get the 48 hours ago timestamp from now
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=48)
+        result = await self.db.execute(
+            update(Booking)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .where(Booking.call_unlocked_at < cutoff)
+            .values(status=BookingStatus.AUTO_EXPIRED)
+            .returning(Booking.id)
+        )
+        return len(result.all())
