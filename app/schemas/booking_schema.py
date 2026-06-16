@@ -57,3 +57,23 @@ class BookingListItem(BaseModel):
     other_party_phone: str | None  # None until INITIATED for seeker view
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class SingleBookingDetailResponse(BaseModel):
+    """Full detail for a single booking — used by both seeker and provider."""
+    booking_id: UUID
+    status: BookingStatus
+    skill_id: int
+    created_at: datetime
+    call_unlocked_at: datetime | None
+    confirmed_at: datetime | None
+    work_schedule: datetime | None
+    completed_at: datetime | None
+    # The other party info — seeker sees provider, provider sees seeker
+    other_party_name: str
+    other_party_phone: str | None
+    # Location of the job (shown to provider when IN_PROGRESS)
+    job_latitude: float | None
+    job_longitude: float | None
+
+    model_config = {"from_attributes": True}

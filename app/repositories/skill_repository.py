@@ -1,3 +1,4 @@
+from typing import Sequence
 from uuid import UUID
 
 from app.models.provider_skill_link_model import ProviderSkillLink
@@ -42,3 +43,11 @@ class SkillRepository(BaseRepository[Skill]):
             .where(ProviderSkillLink.provider_id == provider_id)
         )
         return result.scalars().first()
+
+    async def get_skills_by_category(self, category_id: int) -> Sequence[Skill]:
+        result = await self.db.execute(
+            select(Skill)
+            .where(Skill.category_id == category_id)
+            .order_by(Skill.id)
+        )
+        return result.scalars().all()
