@@ -7,7 +7,7 @@ from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
-from app.schemas.urgent_schema import ClaimedBroadcastResponse, UrgentBroadcastCreateSchema, UrgentBroadcastResponse
+from app.schemas.urgent_schema import ClaimedBroadcastResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastResponse
 from app.services.urgent_service import UrgentService
 
 
@@ -52,6 +52,24 @@ async def claim_urgent_broadcast(
     return await UrgentService.claim_broadcast(
         broadcast_id=broadcast_id,
         provider_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
+@router.get("/broadcast/{broadcast_id}", response_model=UrgentBroadcastDetailResponse)
+async def get_broadcast_detail(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Provider fetches broadcast details after tapping the FCM notification.
+    Returns skill, status, and seeker coordinates for navigation.
+    """
+    return await UrgentService.get_broadcast(
+        broadcast_id=broadcast_id,
         db=db,
         lang=lang,
     )

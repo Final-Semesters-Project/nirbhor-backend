@@ -22,11 +22,13 @@ async def lifespan(app: FastAPI):
 
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings
+    from app.jobs.urgent_jobs import expire_stale_broadcasts
 
     scheduler = AsyncIOScheduler()
     scheduler.add_job(send_booking_followup_notifications,
                       "interval", minutes=5)
     scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+    scheduler.add_job(expire_stale_broadcasts, "interval", minutes=1)
     scheduler.start()
     logger.info("APScheduler started successfully inside lifespan startup.")
 
