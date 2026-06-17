@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
-from app.api.dependencies import get_current_seeker, get_current_provider
+from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.models.user_model import User
-from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema
+from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema, SingleBookingDetailResponse
 from app.services.booking_service import BookingService
 from app.core.i18n import t
 
@@ -56,6 +56,26 @@ async def seeker_booking_history(
     """Seeker's full booking history including open INITIATED entries."""
     return await BookingService.get_seeker_history(
         seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
+@router.get("/{booking_id}", response_model=SingleBookingDetailResponse)
+async def get_booking_detail(
+    booking_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Single booking detail — accessible by both seeker and provider of that booking.
+    Shows job location coordinates to provider when status is IN_PROGRESS.
+    """
+
+    return await BookingService.get_single_booking(
+        booking_id=booking_id,
+        current_user_id=current_user.id,
         db=db,
         lang=lang,
     )

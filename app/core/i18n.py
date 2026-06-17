@@ -62,7 +62,7 @@ MESSAGES = {
         "internal_server_error": "Internal server error. Please try again.",
         "nid_already_verified": "NID already verified. Can not upload again.",
         "booking_wrong_status": "This booking cannot be updated at this stage.",
-        "booking_not_yours":  "You are not authorized to update this booking.",
+        "can_not_update_booking":  "You are not authorized to update this booking.",
         "too_many_open_bookings": "You can unlock up to 10 provider numbers at a time. Please wait 2 hours before unlocking more.",
         "provider_unavailable": "This provider is currently unavailable.",
         "broadcast_not_found": "Broadcast not found or already expired.",
@@ -79,7 +79,7 @@ MESSAGES = {
         "broadcast_not_broadcasting": "This broadcast is no longer active.",
         "review_already_exists": "You have already reviewed this booking.",
         "review_not_eligible": "This booking is not yet completed.",
-        "booking_not_found": "Booking not found.",
+        "booking_not_yours": "This booking does not belong to you.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -138,7 +138,7 @@ MESSAGES = {
         "empty_data": "কোন তথ্য প্রদান করা হয়নি।",
         "nid_already_verified": "এনআইডি ইতিমধ্যে যাচাই করা হয়েছে। পুনরায় আপলোড করা যাবে না।",
         "booking_wrong_status": "এই বুকিং এখন আপডেট করা যাবে না।",
-        "booking_not_yours": "এই বুকিং আপডেট করার অনুমতি নেই।",
+        "can_not_update_booking": "এই বুকিং আপডেট করার অনুমতি নেই।",
         "too_many_open_bookings": "আপনি একসাথে সর্বোচ্চ ১০টি প্রোভাইডারের নম্বর আনলক করতে পারবেন। আরও আনলক করতে ২ ঘণ্টা অপেক্ষা করুন।",
         "provider_unavailable": "এই প্রোভাইডার এখন উপলব্ধ নেই।",
         "broadcast_not_found": "ব্রডকাস্ট পাওয়া যায়নি বা মেয়াদ শেষ।",
@@ -155,7 +155,7 @@ MESSAGES = {
         "broadcast_not_broadcasting": "এই ব্রডকাস্ট আর সক্রিয় নেই।",
         "review_already_exists": "আপনি ইতিমধ্যে এই বুকিং রিভিউ করেছেন।",
         "review_not_eligible": "এই বুকিং এখনও সম্পন্ন হয়নি।",
-        "booking_not_found": "বুকিং পাওয়া যায়নি।",
+        "booking_not_yours": "এই বুকিং আপনার নয়।",
     }
 }
 

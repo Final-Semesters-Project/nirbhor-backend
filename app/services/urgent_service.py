@@ -7,7 +7,6 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.models.skill_model import Skill
 from app.models.urgent_broadcast_model import BroadcastStatus
-from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastResponse, ClaimedBroadcastResponse

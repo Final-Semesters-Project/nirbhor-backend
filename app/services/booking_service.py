@@ -1,3 +1,4 @@
+from typing import cast
 from uuid import UUID
 from datetime import datetime, timezone
 from asyncpg import ForeignKeyViolationError, UniqueViolationError
@@ -10,7 +11,7 @@ from app.models.provider_profile_model import ProviderProfile
 from app.repositories.booking_repository import BookingRepository
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.booking_schema import BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem
+from app.schemas.booking_schema import BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem, SingleBookingDetailResponse
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 
@@ -130,6 +131,59 @@ class BookingService:
             raise
 
     @staticmethod
+    async def get_single_booking(
+        booking_id: UUID,
+        current_user_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> SingleBookingDetailResponse:
+        from geoalchemy2.shape import to_shape
+        from shapely.geometry import Point
+
+        booking_repo = BookingRepository(db)
+        user_repo = UserRepository(db)
+
+        booking = await booking_repo.get_single_booking(booking_id)
+        if not booking:
+            raise DomainValidationError(t("booking_not_found", lang))
+
+        # Only the seeker or provider of this booking can view it
+        if booking.seeker_id != current_user_id and booking.provider_id != current_user_id:
+            raise DomainValidationError(t("booking_not_yours", lang))
+
+        is_seeker = booking.seeker_id == current_user_id
+
+        if is_seeker:
+            other = await user_repo.get_by_id(booking.provider_id)
+        else:
+            other = await user_repo.get_by_id(booking.seeker_id)
+
+        # Extract job location coordinates from PostGIS point
+        lat, lng = None, None
+        if booking.job_location is not None:
+            point = cast(Point, to_shape(booking.job_location))
+            lng = point.x
+            lat = point.y
+
+        return SingleBookingDetailResponse(
+            booking_id=booking.id,
+            status=booking.status,
+            skill_id=booking.skill_id,
+            created_at=booking.created_at,
+            call_unlocked_at=booking.call_unlocked_at,
+            confirmed_at=booking.confirmed_at,
+            work_schedule=booking.work_schedule,
+            completed_at=booking.completed_at,
+            other_party_name=(
+                other.name_bn if lang == "bn" and other else other.name_en) if other else "-",
+            # Phone visible to seeker always (they unlocked it).
+            # Provider sees seeker phone only when IN_PROGRESS (they need to go there).
+            other_party_phone=other.phone_en if other else None,
+            job_latitude=lat,
+            job_longitude=lng,
+        )
+
+    @staticmethod
     async def respond_to_booking(
         booking_id: UUID,
         data: BookingRespondFromNotificationSchema,
@@ -152,7 +206,7 @@ class BookingService:
 
         # Only the seeker who created this booking can respond
         if booking.seeker_id != seeker_id:
-            raise DomainValidationError(t("booking_not_yours", lang))
+            raise DomainValidationError(t("can_not_update_booking", lang))
 
         # Can only respond to INITIATED bookings
         if booking.status != BookingStatus.INITIATED:
@@ -162,32 +216,40 @@ class BookingService:
             booking.status = BookingStatus.IN_PROGRESS
             booking.confirmed_at = datetime.now(timezone.utc)
             booking.work_schedule = data.work_schedule
+        else:
+            booking.status = BookingStatus.CANCELLED
 
         try:
-            # Auto-cancel all other INITIATED bookings from this seeker
-            cancelled_count = await booking_repo.cancel_other_initiated(
-                seeker_id=seeker_id,
-                exclude_booking_id=booking_id,
-            )
-            if cancelled_count > 0:
+            # If they hired the provider, update active tracking parameters
+            if data.hired:
                 logger.info(
-                    f"Auto-cancelled {cancelled_count} other INITIATED bookings "
-                    f"for seeker {seeker_id} after confirming booking {booking_id}"
-                )
+                    f"Booking {booking_id} → IN_PROGRESS by seeker {seeker_id}")
 
                 # Implied Activity: bump last_active_at for both parties
                 now = datetime.now(timezone.utc)
                 await user_repo.update_last_active(booking.seeker_id, now)
                 await user_repo.update_last_active(booking.provider_id, now)
 
-                logger.info(
-                    f"Booking {booking_id} → IN_PROGRESS by seeker {seeker_id}")
+                # Auto-cancel all other INITIATED bookings from this seeker
+                cancelled_count = await booking_repo.cancel_other_initiated(
+                    seeker_id=seeker_id,
+                    exclude_booking_id=booking_id,
+                )
+                if cancelled_count > 0:
+                    logger.info(
+                        f"Auto-cancelled {cancelled_count} other INITIATED bookings "
+                        f"for seeker {seeker_id} after confirming booking {booking_id}"
+                    )
             else:
-                booking.status = BookingStatus.CANCELLED
+                # booking.status = BookingStatus.CANCELLED
                 logger.info(
-                    f"Booking {booking_id} → CANCELLED by seeker {seeker_id}")
+                    f"Booking manually {booking_id} → CANCELLED by seeker {seeker_id}")
 
             await db.commit()
+
+            msg = "IN_PROGRESS" if data.hired else "CANCELLED"
+            logger.success(f"Booking status updated to {msg}")
+
             return {"booking_id": booking_id, "status": booking.status}
         except IntegrityError as e:
             await db.rollback()
@@ -244,6 +306,7 @@ class BookingService:
         bookings_with_seekers = await booking_repo.get_provider_incoming_with_seekers(provider_id)
 
         result = []
+        logger.info(f"bookings_with_seekers: {bookings_with_seekers}")
         for booking, seeker in bookings_with_seekers:
             localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
             localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en

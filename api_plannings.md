@@ -147,61 +147,6 @@ class ReviewRepository(BaseRepository[Review]):
 
 ## 3. Services
 
-### `app/services/booking_service.py` — add `get_single_booking`
-
-```python
-@staticmethod
-async def get_single_booking(
-    booking_id: UUID,
-    current_user_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> BookingDetailResponse:
-    from geoalchemy2.shape import to_shape
-
-    booking_repo = BookingRepository(db)
-    user_repo = UserRepository(db)
-
-    booking = await booking_repo.get_single_booking(booking_id)
-    if not booking:
-        raise DomainValidationError(t("booking_not_found", lang))
-
-    # Only the seeker or provider of this booking can view it
-    if booking.seeker_id != current_user_id and booking.provider_id != current_user_id:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    is_seeker = booking.seeker_id == current_user_id
-
-    if is_seeker:
-        other = await user_repo.get_by_id(booking.provider_id)
-    else:
-        other = await user_repo.get_by_id(booking.seeker_id)
-
-    # Extract job location coordinates from PostGIS point
-    lat, lng = None, None
-    if booking.job_location is not None:
-        point = to_shape(booking.job_location)
-        lng = point.x
-        lat = point.y
-
-    return BookingDetailResponse(
-        booking_id=booking.id,
-        status=booking.status,
-        skill_id=booking.skill_id,
-        created_at=booking.created_at,
-        call_unlocked_at=booking.call_unlocked_at,
-        confirmed_at=booking.confirmed_at,
-        work_schedule=booking.work_schedule,
-        completed_at=booking.completed_at,
-        other_party_name=other.name_en if other else "—",
-        # Phone visible to seeker always (they unlocked it).
-        # Provider sees seeker phone only when IN_PROGRESS (they need to go there).
-        other_party_phone=other.phone_en if other else None,
-        job_latitude=lat,
-        job_longitude=lng,
-    )
-```
-
 ### `app/services/review_service.py` — new
 
 ```python
@@ -390,3 +335,6 @@ Based on your screen list, here's what remains grouped by priority:
 - `GET /api/v1/admin/users` — user list with filters
 - `PATCH /api/v1/admin/users/{user_id}/toggle` — enable/disable account
 - `GET /api/v1/admin/analytics` — stats + graphs
+
+
+# TODO: How to mark completed jobs?
