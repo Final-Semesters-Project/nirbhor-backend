@@ -105,6 +105,22 @@ async def respond_to_booking(
         lang=lang,
     )
 
+
+@router.patch("/{booking_id}/complete", status_code=200)
+async def mark_booking_completed(
+    booking_id: UUID,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Seeker confirms the job is done, triggered by the completion prompt FCM. or from the "My Bookings -> Single Booking Details" page if the status == IN_PROGRESS. Then the review form will show."""
+    return await BookingService.mark_completed(
+        booking_id=booking_id,
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
 """
 accept_language: Annotated[str | None,
                                Header(alias="Accept-Language")] = "en"

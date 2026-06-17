@@ -77,3 +77,8 @@ class SingleBookingDetailResponse(BaseModel):
     job_longitude: float | None
 
     model_config = {"from_attributes": True}
+
+
+class BookingCompleteSchema(BaseModel):
+    """Seeker confirms the job is done, triggered by completion prompt FCM."""
+    pass  # no fields needed — just a state transition trigger

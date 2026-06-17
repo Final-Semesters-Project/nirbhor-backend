@@ -224,3 +224,14 @@ class BookingRepository(BaseRepository[Booking]):
             .returning(Booking.id)
         )
         return len(result.all())
+
+    async def mark_completed(self, booking: Booking) -> Booking:
+        """
+        Seeker manually confirms job completion (from booking details page).
+        Only valid from IN_PROGRESS. confirmed_at was already set when
+        the booking became IN_PROGRESS, so we don't touch it here.
+        """
+        booking.status = BookingStatus.COMPLETED
+        booking.completed_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        return booking
