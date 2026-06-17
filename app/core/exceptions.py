@@ -46,6 +46,7 @@ class DomainValidationError(Exception):
 VALIDATOR_MSG_MAP = {
     "work schedule is required when hired is true.": "work_schedule_required",
     "work schedule must be a future time.":          "work_schedule_must_be_future",
+    "rating must be between 1 and 5.":               "not_valid_rating",
     # TODO: add more as you write more validators
 }
 

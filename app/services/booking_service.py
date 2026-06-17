@@ -350,3 +350,29 @@ class BookingService:
                 other_party_phone=phone,
             ))
         return result
+
+    @staticmethod
+    async def mark_completed(
+        booking_id: UUID,
+        seeker_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> dict:
+        booking_repo = BookingRepository(db)
+
+        booking = await booking_repo.get_single_booking(booking_id)
+        if not booking:
+            raise DomainValidationError(t("booking_not_found", lang))
+
+        if booking.seeker_id != seeker_id:
+            raise DomainValidationError(t("booking_not_yours", lang))
+
+        if booking.status != BookingStatus.IN_PROGRESS:
+            raise DomainValidationError(t("booking_wrong_status", lang))
+
+        updated = await booking_repo.mark_completed(booking)
+        await db.commit()
+
+        logger.info(
+            f"Booking {booking_id} marked COMPLETED by seeker {seeker_id}")
+        return {"booking_id": booking_id, "status": updated.status}

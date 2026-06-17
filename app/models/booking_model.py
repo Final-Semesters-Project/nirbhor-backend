@@ -69,11 +69,13 @@ class Booking(UUIDMixin, TimestampMixin, Base):
         default=BookingStatus.INITIATED,
         server_default=BookingStatus.INITIATED.value
     )
+    # FIXME: should I index status?
 
     call_unlocked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False
     )
+    # FIXME: should I index call_unlocked_at?
 
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),

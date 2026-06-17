@@ -80,6 +80,7 @@ MESSAGES = {
         "review_already_exists": "You have already reviewed this booking.",
         "review_not_eligible": "This booking is not yet completed.",
         "booking_not_yours": "This booking does not belong to you.",
+        "not_valid_rating": "rating must be between 1 and 5.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -156,6 +157,7 @@ MESSAGES = {
         "review_already_exists": "আপনি ইতিমধ্যে এই বুকিং রিভিউ করেছেন।",
         "review_not_eligible": "এই বুকিং এখনও সম্পন্ন হয়নি।",
         "booking_not_yours": "এই বুকিং আপনার নয়।",
+        "not_valid_rating": "রেটিং এর মান ১ থেকে ৫ এর মধ্যে হতে হবে।",
     }
 }
 

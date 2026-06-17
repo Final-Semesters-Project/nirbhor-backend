@@ -32,39 +32,6 @@ app/
 
 ## 1. Updated Schemas
 
-### `app/schemas/review_schema.py` — new
-
-```python
-from pydantic import BaseModel, field_validator
-from uuid import UUID
-
-
-class ReviewCreateSchema(BaseModel):
-    booking_id: UUID
-    rating: int
-    comment: str | None = None
-    is_anonymous: bool = True
-
-    @field_validator("rating")
-    @classmethod
-    def rating_must_be_valid(cls, v: int) -> int:
-        if not 1 <= v <= 5:
-            raise ValueError("rating must be between 1 and 5.")
-        return v
-
-
-class ReviewResponse(BaseModel):
-    review_id: UUID
-    booking_id: UUID
-    rating: int
-    comment: str | None
-    is_anonymous: bool
-
-    model_config = {"from_attributes": True}
-```
-
----
-
 ## 2. Repositories
 
 ### `app/repositories/review_repository.py` — new
@@ -238,34 +205,6 @@ class ReviewService:
 
 ## 4. Routers
 
-### `app/api/v1/bookings.py` — add single booking endpoint
-
-```python
-# Add this to your existing bookings router
-
-@router.get("/{booking_id}", response_model=BookingDetailResponse)
-async def get_booking_detail(
-    booking_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Single booking detail — accessible by both seeker and provider of that booking.
-    Shows job location coordinates to provider when status is IN_PROGRESS.
-
-    ⚠️  Register this AFTER /provider/me and /seeker/me in the router
-    to avoid FastAPI matching 'provider' or 'seeker' as a booking_id UUID.
-    (FastAPI validates UUID format so this is safe, but explicit ordering is cleaner.)
-    """
-    return await BookingService.get_single_booking(
-        booking_id=booking_id,
-        current_user_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-```
-
 ### `app/api/v1/reviews.py` — new
 
 ```python
@@ -342,4 +281,4 @@ why sqlalchemy returns direct objects or tuples when I write the query in servic
 but it returns memory locations <> when I write the query in repository layer?
 
 
-what will I answer if teacher asks why didn't I use pubsub for notifications? Why used FCM instead?
+what will I answer if teacher asks why didn't I use pubsub for notifications? Why used FCM instead? =>  FCM method we are using is direct multicast
