@@ -3,9 +3,9 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
-from app.api.dependencies import get_current_seeker, get_current_provider
+from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.models.user_model import User
-from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema
+from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema, SingleBookingDetailResponse
 from app.services.booking_service import BookingService
 from app.core.i18n import t
 
@@ -61,6 +61,26 @@ async def seeker_booking_history(
     )
 
 
+@router.get("/{booking_id}", response_model=SingleBookingDetailResponse)
+async def get_booking_detail(
+    booking_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Single booking detail — accessible by both seeker and provider of that booking.
+    Shows job location coordinates to provider when status is IN_PROGRESS.
+    """
+
+    return await BookingService.get_single_booking(
+        booking_id=booking_id,
+        current_user_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
 @router.patch("/{booking_id}/respond", status_code=200)
 async def respond_to_booking(
     booking_id: UUID,
@@ -72,7 +92,10 @@ async def respond_to_booking(
     """
     Seeker responds to the FCM follow-up.
     hired=true  → IN_PROGRESS + work_schedule required
-    hired=false → CANCELLED
+    hired=false → CANCELLED.
+
+    Let seekers confirm the bookings from the "My Bookings" page if the status == INITIATED. So that they doesn't have to wait for the FCM notification.
+    If the seeker already confirms the booking, then it will show IN_PROGRESS.
     """
     return await BookingService.respond_to_booking(
         booking_id=booking_id,

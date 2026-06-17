@@ -69,3 +69,32 @@ async def expire_stale_bookings():
         if expired_count:
             logger.info(
                 f"Nightly cleanup: expired {expired_count} stale bookings")
+
+
+async def send_completion_prompts():
+    """
+    Runs every hour. Finds IN_PROGRESS bookings past work_schedule
+    and sends the seeker a completion prompt FCM.
+    """
+    async with AsyncSessionLocal() as db:
+        repo = BookingRepository(db)
+        bookings = await repo.get_in_progress_past_work_schedule()
+
+        for booking in bookings:
+            # TODO: await NotificationService.send_completion_prompt(booking.seeker_id, booking.id)
+            logger.info(
+                f"[stub] Completion prompt sent for booking {booking.id}")
+
+
+async def auto_complete_stale_bookings():
+    """
+    Runs nightly. Auto-completes IN_PROGRESS bookings that have sat
+    72+ hours past their work_schedule without manual completion.
+    This is the safety net so bookings don't stay open forever.
+    """
+    async with AsyncSessionLocal() as db:
+        repo = BookingRepository(db)
+        count = await repo.auto_complete_stale_in_progress(grace_period_hours=72)
+        await db.commit()
+        if count:
+            logger.info(f"Auto-completed {count} stale IN_PROGRESS bookings")

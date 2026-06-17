@@ -6,7 +6,7 @@ from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
 from datetime import datetime
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geometry, WKBElement
 
 # CONFIRMED = "confirmed"
 
@@ -91,7 +91,7 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     )
 
     # PostGIS point — stores (longitude, latitude)
-    job_location: Mapped[object] = mapped_column(
+    job_location: Mapped[WKBElement] = mapped_column(
         Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
         nullable=False,
     )
