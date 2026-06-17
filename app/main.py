@@ -21,14 +21,23 @@ async def lifespan(app: FastAPI):
         await seed_categories_and_skills(db)
 
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
-    from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings
+    from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings, send_completion_prompts, auto_complete_stale_bookings
     from app.jobs.urgent_jobs import expire_stale_broadcasts
 
     scheduler = AsyncIOScheduler()
-    scheduler.add_job(send_booking_followup_notifications,
-                      "interval", minutes=5)
-    scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+    scheduler.add_job(
+        send_booking_followup_notifications,
+        "interval", minutes=5
+    )
     scheduler.add_job(expire_stale_broadcasts, "interval", minutes=1)
+    scheduler.add_job(send_completion_prompts, "interval", hours=1)
+
+    scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+    scheduler.add_job(
+        auto_complete_stale_bookings,
+        "cron", hour=1, minute=0
+    )  # nightly
+
     scheduler.start()
     logger.info("APScheduler started successfully inside lifespan startup.")
 

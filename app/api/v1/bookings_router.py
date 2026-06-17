@@ -92,7 +92,10 @@ async def respond_to_booking(
     """
     Seeker responds to the FCM follow-up.
     hired=true  → IN_PROGRESS + work_schedule required
-    hired=false → CANCELLED
+    hired=false → CANCELLED.
+
+    Let seekers confirm the bookings from the "My Bookings" page if the status == INITIATED. So that they doesn't have to wait for the FCM notification.
+    If the seeker already confirms the booking, then it will show IN_PROGRESS.
     """
     return await BookingService.respond_to_booking(
         booking_id=booking_id,

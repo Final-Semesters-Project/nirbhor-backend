@@ -1,3 +1,4 @@
+from typing import Sequence
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -188,3 +189,38 @@ class BookingRepository(BaseRepository[Booking]):
             select(Booking).where(Booking.id == booking_id)
         )
         return result.scalar_one_or_none()
+
+    async def get_in_progress_past_work_schedule(self) -> Sequence[Booking]:
+        """
+        Find IN_PROGRESS bookings where work_schedule has passed.
+        Used to send the completion prompt FCM:
+        'Your job with [Provider] should be done. Tap to review!'
+        """
+        now = datetime.now(timezone.utc)
+        result = await self.db.execute(
+            select(Booking)
+            .where(Booking.status == BookingStatus.IN_PROGRESS)
+            .where(Booking.work_schedule < now)
+        )
+        return result.scalars().all()
+
+    async def auto_complete_stale_in_progress(self, grace_period_hours: int = 72) -> int:
+        """
+        Bookings still IN_PROGRESS more than grace_period_hours after work_schedule
+        are auto-marked COMPLETED with completed_at = work_schedule.
+        This prevents bookings from being stuck forever if the seeker never
+        opens the app to manually mark completion.
+        """
+        cutoff = datetime.now(timezone.utc) - \
+            timedelta(hours=grace_period_hours)
+        result = await self.db.execute(
+            update(Booking)
+            .where(Booking.status == BookingStatus.IN_PROGRESS)
+            .where(Booking.work_schedule < cutoff)
+            .values(
+                status=BookingStatus.COMPLETED,
+                completed_at=Booking.work_schedule,  # defaults to work_schedule per spec
+            )
+            .returning(Booking.id)
+        )
+        return len(result.all())

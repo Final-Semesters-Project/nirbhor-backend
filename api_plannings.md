@@ -337,4 +337,9 @@ Based on your screen list, here's what remains grouped by priority:
 - `GET /api/v1/admin/analytics` — stats + graphs
 
 
-# TODO: How to mark completed jobs?
+
+why sqlalchemy returns direct objects or tuples when I write the query in service layer
+but it returns memory locations <> when I write the query in repository layer?
+
+
+what will I answer if teacher asks why didn't I use pubsub for notifications? Why used FCM instead?
