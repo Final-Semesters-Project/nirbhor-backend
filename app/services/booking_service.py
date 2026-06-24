@@ -324,6 +324,35 @@ class BookingService:
         return result
 
     @staticmethod
+    async def get_providers_completed_bookings(
+        provider_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> list[BookingListItem]:
+        """Provider's 'Completed Bookings/Jobs tab — only COMPLETED bookings will be shown with options to give review."""
+        booking_repo = BookingRepository(db)
+        bookings_with_seekers = await booking_repo.get_provider_completed_with_seekers(provider_id)
+
+        result = []
+        logger.info(
+            f"completed bookings with seekers: {bookings_with_seekers}")
+        for booking, seeker in bookings_with_seekers:
+            localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
+            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+            logger.success(dict(result))
+            result.append(BookingListItem(
+                booking_id=booking.id,
+                status=booking.status,
+                skill_id=booking.skill_id,
+                skill_name=localized_skill_name,
+                created_at=booking.created_at,
+                work_schedule=booking.work_schedule,
+                other_party_name=localized_name,
+                other_party_phone=seeker.phone_en,
+            ))
+        return result
+
+    @staticmethod
     async def get_seeker_history(
         seeker_id: UUID,
         db: AsyncSession,

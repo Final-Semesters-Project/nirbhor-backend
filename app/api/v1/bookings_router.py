@@ -46,6 +46,22 @@ async def provider_incoming_bookings(
         lang=lang,
     )
 
+# TODO: Providers completed bookings
+
+
+@router.get("/provider/me/completed", response_model=list[BookingListItem])
+async def provider_completed_bookings(
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
+    return await BookingService.get_providers_completed_bookings(
+        provider_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
 
 @router.get("/seeker/me", response_model=list[BookingListItem])
 async def seeker_booking_history(

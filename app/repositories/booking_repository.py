@@ -137,6 +137,20 @@ class BookingRepository(BaseRepository[Booking]):
         )
         return list(result.tuples())
 
+    async def get_provider_completed_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
+        """Bookings with seeker & skill eagerly loaded."""
+        from sqlalchemy.orm import aliased
+
+        result = await self.db.execute(
+            select(Booking, User)
+            .join(User, Booking.seeker_id == User.id)
+            .options(selectinload(Booking.skill))
+            .where(Booking.provider_id == provider_id)
+            .where(Booking.status == BookingStatus.COMPLETED)
+            .order_by(Booking.confirmed_at.desc())
+        )
+        return list(result.tuples())
+
     async def get_seeker_history_with_providers(self, seeker_id: UUID) -> list[tuple[Booking, User]]:
         """Bookings with provider eagerly loaded."""
         result = await self.db.execute(

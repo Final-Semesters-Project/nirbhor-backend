@@ -1,35 +1,5 @@
 # Nirbhor — Next API Batch
 
-## Files Changed / Created
-
-```
-app/
-├── schemas/
-│   ├── urgent_schema.py          ← update claim response
-│   ├── category_schema.py        ← new
-│   ├── booking_schema.py         ← add single booking detail schema
-│   └── review_schema.py          ← new
-├── repositories/
-│   ├── urgent_repository.py      ← update claim to return seeker phone
-│   ├── category_repository.py    ← new
-│   ├── booking_repository.py     ← add get_single_booking
-│   └── review_repository.py      ← new
-├── services/
-│   ├── urgent_service.py         ← update claim response
-│   ├── category_service.py       ← new
-│   ├── booking_service.py        ← add get_single_booking
-│   └── review_service.py         ← new
-├── api/v1/
-│   ├── urgent.py                 ← add GET single broadcast
-│   ├── categories.py             ← new
-│   ├── bookings.py               ← add GET single booking
-│   └── reviews.py                ← new
-└── jobs/
-    └── urgent_jobs.py            ← new: expiry background job
-```
-
----
-
 ## 1. Updated Schemas
 
 ## 2. Repositories
@@ -41,12 +11,6 @@ app/
 ## 5. Background Job — Urgent Broadcast Expiry
 
 ## 6. Register New Routers in `app/api/v1/router.py`
-
-```python
-from app.api.v1 import auth, bookings, search, urgent, categories, reviews
-
-api_router.include_router(reviews.router,    prefix="/reviews",    tags=["Reviews"])
-```
 
 ---
 
