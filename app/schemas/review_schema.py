@@ -1,12 +1,13 @@
-from pydantic import BaseModel, field_validator, ConfigDict
+from pydantic import BaseModel, field_validator, ConfigDict, Field
 from uuid import UUID
 
 
 class ReviewCreateSchema(BaseModel):
     booking_id: UUID
-    rating: int
+    rating: int = Field(..., description="Rating must be between 1 and 5")
     comment: str | None = None
-    is_anonymous: bool = True
+    is_anonymous: bool = Field(
+        True, description="Default is True for Seekers and False for Providers")
 
     @field_validator("rating")
     @classmethod
