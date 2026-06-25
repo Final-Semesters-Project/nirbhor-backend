@@ -19,16 +19,29 @@ class BookingRepository(BaseRepository[Booking]):
         Count INITIATED bookings from this seeker within the last 2 hours.
         We only count within 2 hours because that's when the first FCM fires.
         After 2 hours the seeker is done unlocking numbers for this session.
+        (we don't need the 2 hour filter now)
         """
-        two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
+        # two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
         result = await self.db.execute(
             select(func.count())
             .where(Booking.seeker_id == seeker_id)
             .where(Booking.status == BookingStatus.INITIATED)
             # within current session
-            .where(Booking.call_unlocked_at >= two_hours_ago)
+            # blocking these where clause because we moved from 10 initiated bookings to 1 at a time though the force modal/cancellation process
+            # .where(Booking.call_unlocked_at >= two_hours_ago)
         )
         return result.scalar_one()
+
+    async def get_active_initiated_booking(self, seeker_id: UUID) -> Booking | None:
+        """Returns the single open INITIATED booking for this seeker, if any."""
+        result = await self.db.execute(
+            select(Booking)
+            .where(Booking.seeker_id == seeker_id)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .order_by(Booking.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def cancel_other_initiated(
         self, seeker_id: UUID, exclude_booking_id: UUID

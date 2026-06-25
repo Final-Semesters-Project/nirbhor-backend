@@ -11,13 +11,13 @@ from app.models.provider_profile_model import ProviderProfile
 from app.repositories.booking_repository import BookingRepository
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.booking_schema import BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem, SingleBookingDetailResponse
+from app.schemas.booking_schema import BookingDetailsForLastInitiatedActiveBooking, BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem, LastInitiatedActiveBookingSchema, SingleBookingDetailResponse
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 
 
 # Business rule: max 10 open (INITIATED) booking at a time per seeker
-MAX_OPEN_BOOKINGS = 10          # max simultaneous unlocked numbers
+MAX_OPEN_BOOKINGS = 1          # max simultaneous unlocked numbers
 FOLLOWUP_DELAY_HOURS = 2        # FCM fires after this many hours
 
 
@@ -40,7 +40,8 @@ class BookingService:
 
         # 1. Spam guard: seeker must not have another open booking
         open_count = await booking_repo.count_active_initiated(seeker_id)
-        if open_count >= MAX_OPEN_BOOKINGS:
+        # changed max open bookings from 10 to 1
+        if open_count > MAX_OPEN_BOOKINGS:
             raise DomainIntegrityError(t("too_many_open_bookings", lang))
 
         # 2. Provider must exist and be available
@@ -351,6 +352,40 @@ class BookingService:
                 other_party_phone=seeker.phone_en,
             ))
         return result
+
+    @staticmethod
+    async def get_seeker_last_active_initiated(
+        seeker_id: UUID,
+        db: AsyncSession,
+        lang: str
+    ) -> LastInitiatedActiveBookingSchema:
+        booking_repo = BookingRepository(db)
+        user_repo = UserRepository(db)
+
+        booking = await booking_repo.get_active_initiated_booking(seeker_id=seeker_id)
+
+        if not booking:
+            return LastInitiatedActiveBookingSchema(has_active_booking=False, booking=None)
+
+        provider = await user_repo.get_by_id(id=booking.provider_id)
+
+        if not provider:
+            return LastInitiatedActiveBookingSchema(has_active_booking=False, booking=None)
+
+        localized_name = provider.name_bn if lang == "bn" else provider.name_en
+
+        return (
+            LastInitiatedActiveBookingSchema(
+                has_active_booking=True,
+                booking=BookingDetailsForLastInitiatedActiveBooking(
+                    booking_id=booking.id,
+                    provider_name=localized_name,
+                    provider_phone=provider.phone_en,
+                    created_at=booking.created_at,
+                    status=booking.status
+                )
+            )
+        )
 
     @staticmethod
     async def get_seeker_history(

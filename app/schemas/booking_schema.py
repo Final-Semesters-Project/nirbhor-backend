@@ -79,6 +79,20 @@ class SingleBookingDetailResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class BookingDetailsForLastInitiatedActiveBooking(BaseModel):
+    booking_id: UUID
+    provider_name: str
+    provider_phone: str
+    created_at: datetime
+    status: BookingStatus
+
+
+class LastInitiatedActiveBookingSchema(BaseModel):
+    has_active_booking: bool
+    booking: BookingDetailsForLastInitiatedActiveBooking | None
+    model_config = ConfigDict(from_attributes=True)
+
+
 class BookingCompleteSchema(BaseModel):
     """Seeker confirms the job is done, triggered by completion prompt FCM."""
     pass  # no fields needed — just a state transition trigger
