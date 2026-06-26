@@ -81,6 +81,12 @@ MESSAGES = {
         "review_not_eligible": "This booking is not yet completed.",
         "booking_not_yours": "This booking does not belong to you.",
         "not_valid_rating": "rating must be between 1 and 5.",
+        "report_not_found": "Report not found.",
+        "verification_updated": "Verification status updated.",
+        "user_status_updated": "User status updated.",
+        "report_status_updated": "Report status updated.",
+        "admin_only": "Admin access required.",
+        "rejection_reason_required": "Rejection reason is required.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -158,6 +164,12 @@ MESSAGES = {
         "review_not_eligible": "এই বুকিং এখনও সম্পন্ন হয়নি।",
         "booking_not_yours": "এই বুকিং আপনার নয়।",
         "not_valid_rating": "রেটিং এর মান ১ থেকে ৫ এর মধ্যে হতে হবে।",
+        "report_not_found": "রিপোর্ট পাওয়া যায়নি।",
+        "verification_updated": "যাচাইকরণ অবস্থা আপডেট হয়েছে।",
+        "user_status_updated": "ব্যবহারকারীর অবস্থা আপডেট হয়েছে।",
+        "report_status_updated": "রিপোর্টের অবস্থা আপডেট হয়েছে।",
+        "admin_only": "শুধুমাত্র অ্যাডমিন অ্যাক্সেস প্রয়োজন।",
+        "rejection_reason_required": "প্রত্যাখ্যানের কারণ প্রদান করুন।"
     }
 }
 

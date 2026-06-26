@@ -17,7 +17,7 @@ from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
 from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
-from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, SkillInfo
+from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, PublicProviderProfile, SkillInfo
 from app.services.cloudinary_service import delete_image_from_cloudinary
 
 
@@ -360,3 +360,16 @@ class ProviderService:
             logger.error(
                 f"Unexpected error in removing a skill of provider: {e}")
             raise
+
+    @staticmethod
+    async def get_public_profile(
+        provider_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> PublicProviderProfile:
+        from app.repositories.provider_repository import ProviderRepository
+        repo = ProviderRepository(db)
+        data = await repo.get_public_profile(provider_id, lang)
+        if not data:
+            raise DomainValidationError(t("provider_not_found", lang))
+        return PublicProviderProfile(**data)
