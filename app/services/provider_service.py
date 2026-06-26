@@ -367,7 +367,7 @@ class ProviderService:
         db: AsyncSession,
         lang: str,
     ) -> PublicProviderProfile:
-        from app.repositories.provider_repository import ProviderRepository
+
         repo = ProviderRepository(db)
         data = await repo.get_public_profile(provider_id, lang)
         if not data:
