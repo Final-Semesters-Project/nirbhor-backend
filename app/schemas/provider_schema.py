@@ -1,4 +1,5 @@
-import uuid
+from datetime import datetime
+from uuid import UUID
 from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 from app.core.schema_validators import validate_radius
 from app.models.provider_profile_model import VerificationLevel
@@ -10,7 +11,7 @@ class SkillInfo(BaseModel):
 
 
 class ProviderDashboardSchema(BaseModel):
-    user_id: uuid.UUID
+    user_id: UUID
     name: str = Field(...,
                       description="EN/BN Name of the provider based on the language")
     photo_url: str | None = Field(
@@ -70,47 +71,30 @@ class ProviderProfileUpdateSchema(BaseModel):
 class AddNewSkillSchema(BaseModel):
     skill_ids: list[int]
 
+
+class PublicSkill(BaseModel):
+    id: int
+    name: str   # localized
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class PublicProviderProfile(BaseModel):
     """
-    for admins to update
-    verification_level: Mapped[VerificationLevel] = mapped_column(
-        sqlEnum(
-            VerificationLevel,
-            name="verification_level",
-            native_enum=False,  # to auto generate enum in alembic versions
-            # values_callable is used to store the string values eg: "admin" instead of the Enum ADMIN in DB
-            values_callable=lambda x: [e.value for e in x]
-        ),
-        nullable=False,
-        default=VerificationLevel.BASIC,
-        server_default=VerificationLevel.BASIC.value
-    )
-
-    verification_status: Mapped[VerificationStatus] = mapped_column(
-        sqlEnum(
-            VerificationStatus,
-            name="verification_status",
-            native_enum=False,  # to auto generate enum in alembic versions
-            # values_callable is used to store the string values eg: "admin" instead of the Enum ADMIN in DB
-            values_callable=lambda x: [e.value for e in x]
-        ),
-        nullable=False,
-        default=VerificationStatus.PENDING,
-        server_default=VerificationStatus.PENDING.value
-    )
-
-    verification_rejection_reason: Mapped[str | None] = mapped_column(
-        String, nullable=True)
-
-    # auto update
-    average_rating: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None)
-
-    warning_status: Mapped[bool] = mapped_column(
-        Boolean, default=False, nullable=False)
-
-    ai_review_summary_en: Mapped[str | None] = mapped_column(
-        String, nullable=True)
-
-    ai_review_summary_bn: Mapped[str | None] = mapped_column(
-        String, nullable=True)
+    Public-facing provider profile — visible to seekers.
+    Phone is intentionally excluded (revealed only after booking initiation).
+    NID urls excluded (private documents).
     """
+    user_id: UUID
+    name: str                           # localized
+    photo_url: str | None
+    verification_level: VerificationLevel
+    average_rating: float | None
+    working_radius_km: int
+    has_smartphone: bool
+    is_available: bool
+    ai_review_summary: str | None       # localized
+    skills: list[PublicSkill]
+    last_active_at: datetime | None
+
+    model_config = ConfigDict(from_attributes=True)

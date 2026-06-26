@@ -38,62 +38,10 @@ app/
     └── notification_service.py ← FCM implementation
 ```
 
----
-
-## i18n keys to add
-
-```python
-"provider_not_found":           {"en": "Provider not found.",                          "bn": "প্রোভাইডার পাওয়া যায়নি।"},
-"report_not_found":             {"en": "Report not found.",                            "bn": "রিপোর্ট পাওয়া যায়নি।"},
-"user_not_found":               {"en": "User not found.",                              "bn": "ব্যবহারকারী পাওয়া যায়নি।"},
-"verification_updated":         {"en": "Verification status updated.",                 "bn": "যাচাইকরণ অবস্থা আপডেট হয়েছে।"},
-"user_status_updated":          {"en": "User status updated.",                         "bn": "ব্যবহারকারীর অবস্থা আপডেট হয়েছে।"},
-"report_status_updated":        {"en": "Report status updated.",                       "bn": "রিপোর্টের অবস্থা আপডেট হয়েছে।"},
-"admin_only":                   {"en": "Admin access required.",                       "bn": "শুধুমাত্র অ্যাডমিন অ্যাক্সেস প্রয়োজন।"},
-"rejection_reason_required":    {"en": "Rejection reason is required.",                "bn": "প্রত্যাখ্যানের কারণ প্রদান করুন।"},
-```
-
----
 
 ## 1. Schemas
 
 ### `app/schemas/provider_schema.py` — add public profile response
-
-```python
-# Add to your existing provider_schema.py
-
-from pydantic import BaseModel
-from uuid import UUID
-from datetime import datetime
-
-
-class PublicSkill(BaseModel):
-    id: int
-    name: str   # localized
-
-    model_config = {"from_attributes": True}
-
-
-class PublicProviderProfile(BaseModel):
-    """
-    Public-facing provider profile — visible to seekers.
-    Phone is intentionally excluded (revealed only after booking initiation).
-    NID urls excluded (private documents).
-    """
-    user_id: UUID
-    name: str                           # localized
-    photo_url: str | None
-    verification_level: str
-    average_rating: float | None
-    working_radius_km: int
-    has_smartphone: bool
-    is_available: bool
-    ai_review_summary: str | None       # localized
-    skills: list[PublicSkill]
-    last_active_at: datetime | None
-
-    model_config = {"from_attributes": True}
-```
 
 ### `app/schemas/urgent_schema.py` — add status response
 
@@ -239,62 +187,7 @@ class AdminAnalyticsResponse(BaseModel):
 ```python
 # Add to your existing ProviderRepository
 
-async def get_public_profile(
-    self, provider_id: UUID, lang: str
-) -> dict | None:
-    """
-    Fetch everything needed for a provider's public profile card.
-    Returns None if provider does not exist or is not active.
-    """
-    from app.models.skill import Skill
-    from app.models.provider_skill_link import ProviderSkillLink
-    from sqlalchemy import func
 
-    # Fetch user + profile in one join
-    result = await self.db.execute(
-        select(User, ProviderProfile)
-        .join(ProviderProfile, User.id == ProviderProfile.user_id)
-        .where(User.id == provider_id)
-        .where(User.is_active == True)
-    )
-    row = result.first()
-    if not row:
-        return None
-
-    user, profile = row
-
-    # Fetch skills with localized names
-    name_col = Skill.name_bn if lang == "bn" else Skill.name_en
-    skills_result = await self.db.execute(
-        select(Skill.id, name_col.label("name"))
-        .join(ProviderSkillLink, Skill.id == ProviderSkillLink.skill_id)
-        .where(ProviderSkillLink.provider_id == provider_id)
-    )
-    skills = [{"id": r.id, "name": r.name} for r in skills_result.all()]
-
-    # Localized name and AI summary
-    name = (
-        (user.name_bn or user.name_en) if lang == "bn" else user.name_en
-    )
-    ai_summary = (
-        (profile.ai_review_summary_bn or profile.ai_review_summary_en)
-        if lang == "bn"
-        else profile.ai_review_summary_en
-    )
-
-    return {
-        "user_id": user.id,
-        "name": name,
-        "photo_url": profile.photo_url,
-        "verification_level": profile.verification_level.value,
-        "average_rating": profile.average_rating,
-        "working_radius_km": profile.working_radius_km,
-        "has_smartphone": profile.has_smartphone,
-        "is_available": profile.is_available,
-        "ai_review_summary": ai_summary,
-        "skills": skills,
-        "last_active_at": user.last_active_at,
-    }
 ```
 
 ### `app/repositories/urgent_repository.py` — add status fetch
@@ -578,23 +471,6 @@ class AdminRepository:
 
 ### `app/services/provider_service.py` — add public profile
 
-```python
-# Add to your existing ProviderService
-
-@staticmethod
-async def get_public_profile(
-    provider_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> PublicProviderProfile:
-    from app.repositories.provider_repository import ProviderRepository
-    repo = ProviderRepository(db)
-    data = await repo.get_public_profile(provider_id, lang)
-    if not data:
-        raise DomainValidationError(t("provider_not_found", lang))
-    return PublicProviderProfile(**data)
-```
-
 ### `app/services/urgent_service.py` — add broadcast status
 
 ```python
@@ -840,30 +716,6 @@ class AdminService:
 ## 4. Routers
 
 ### `app/api/v1/providers.py` — add public profile endpoint
-
-```python
-# Add to your existing providers router
-
-from app.schemas.provider_schema import PublicProviderProfile
-from app.services.provider_service import ProviderService
-
-@router.get("/{provider_id}/public", response_model=PublicProviderProfile)
-async def get_provider_public_profile(
-    provider_id: UUID,
-    current_user: User = Depends(get_current_user),   # any logged-in user
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker taps a provider card to see their full public profile.
-    Phone is NOT included — only revealed after booking initiation.
-    """
-    return await ProviderService.get_public_profile(
-        provider_id=provider_id,
-        db=db,
-        lang=lang,
-    )
-```
 
 ### `app/api/v1/urgent.py` — add status endpoint
 
