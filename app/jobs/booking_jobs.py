@@ -48,7 +48,6 @@ async def expire_stale_bookings():
     """
     Runs nightly at midnight via APScheduler.
     INITIATED bookings older than 48 hours → AUTO_EXPIRED.
-    This is unchanged from the original design.
     """
     async with AsyncSessionLocal() as db:
         # get the 48 hours ago timestamp from now

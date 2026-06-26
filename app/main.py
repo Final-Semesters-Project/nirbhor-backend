@@ -1,12 +1,11 @@
-from fastapi.responses import JSONResponse
 from loguru import logger
 from app.api.v1.router import api_router
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from app.core.config import settings
-from app.core.exceptions import DomainIntegrityError, register_exception_handlers
+from app.core.exceptions import register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
-from app.db.seed import seed_categories_and_skills
+from app.db.seed import seed_categories_and_skills, create_admin_user
 from app.db.session import AsyncSessionLocal
 
 app_kwargs = {}
@@ -19,6 +18,7 @@ async def lifespan(app: FastAPI):
     setup_logging()
     async with AsyncSessionLocal() as db:
         await seed_categories_and_skills(db)
+        await create_admin_user(db)
 
     from apscheduler.schedulers.asyncio import AsyncIOScheduler
     from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings, send_completion_prompts, auto_complete_stale_bookings

@@ -5,7 +5,7 @@ from app.db.session import get_db_session
 from app.core.i18n import get_lang
 from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.models.user_model import User
-from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema, SingleBookingDetailResponse
+from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema, LastInitiatedActiveBookingSchema, SingleBookingDetailResponse
 from app.services.booking_service import BookingService
 from app.core.i18n import t
 
@@ -47,6 +47,20 @@ async def provider_incoming_bookings(
     )
 
 
+@router.get("/provider/me/completed", response_model=list[BookingListItem])
+async def provider_completed_bookings(
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
+    return await BookingService.get_providers_completed_bookings(
+        provider_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
 @router.get("/seeker/me", response_model=list[BookingListItem])
 async def seeker_booking_history(
     current_user: User = Depends(get_current_seeker),
@@ -58,6 +72,25 @@ async def seeker_booking_history(
         seeker_id=current_user.id,
         db=db,
         lang=lang,
+    )
+
+
+@router.get("/seeker/last_active_initiated", response_model=LastInitiatedActiveBookingSchema)
+async def seekers_last_active_initiated_bookings(
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Called when seeker opens/foregrounds the app.
+    When seeker initiates a new booking by getting the phone number and returns to the app afterwards,
+    the app will show the last initiated booking on the home screen/search page. Seeker can click "CANCEL" if the booking is cancelled or Confirm if it's accepted.
+    Accepting the booking will ask for the work schedule. If the seeker opens the  
+    """
+    return await BookingService.get_seeker_last_active_initiated(
+        seeker_id=current_user.id,
+        db=db,
+        lang=lang
     )
 
 

@@ -14,21 +14,56 @@ class BookingRepository(BaseRepository[Booking]):
     def __init__(self, db: AsyncSession):
         super().__init__(Booking, db)
 
+    async def create_booking(
+        self,
+        seeker_id: UUID,
+        provider_id: UUID,
+        skill_id: int,
+        latitude: float,
+        longitude: float,
+    ) -> Booking:
+        """Insert a new INITIATED booking with job_location set."""
+        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        booking = Booking(
+            seeker_id=seeker_id,
+            provider_id=provider_id,
+            skill_id=skill_id,
+            status=BookingStatus.INITIATED,
+            call_unlocked_at=datetime.now(timezone.utc),
+            job_location=point,
+        )
+        self.db.add(booking)
+        await self.db.flush()  # get the generated ID without committing
+        return booking
+
     async def count_active_initiated(self, seeker_id: UUID) -> int:
         """
         Count INITIATED bookings from this seeker within the last 2 hours.
         We only count within 2 hours because that's when the first FCM fires.
         After 2 hours the seeker is done unlocking numbers for this session.
+        (we don't need the 2 hour filter now)
         """
-        two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
+        # two_hours_ago = datetime.now(timezone.utc) - timedelta(hours=2)
         result = await self.db.execute(
             select(func.count())
             .where(Booking.seeker_id == seeker_id)
             .where(Booking.status == BookingStatus.INITIATED)
             # within current session
-            .where(Booking.call_unlocked_at >= two_hours_ago)
+            # blocking these where clause because we moved from 10 initiated bookings to 1 at a time though the force modal/cancellation process
+            # .where(Booking.call_unlocked_at >= two_hours_ago)
         )
         return result.scalar_one()
+
+    async def get_active_initiated_booking(self, seeker_id: UUID) -> Booking | None:
+        """Returns the single open INITIATED booking for this seeker, if any."""
+        result = await self.db.execute(
+            select(Booking)
+            .where(Booking.seeker_id == seeker_id)
+            .where(Booking.status == BookingStatus.INITIATED)
+            .order_by(Booking.created_at.desc())
+            .limit(1)
+        )
+        return result.scalar_one_or_none()
 
     async def cancel_other_initiated(
         self, seeker_id: UUID, exclude_booking_id: UUID
@@ -64,28 +99,6 @@ class BookingRepository(BaseRepository[Booking]):
             .where(Booking.call_unlocked_at <= window_end)
         )
         return list(result.scalars().all())
-
-    async def create_booking(
-        self,
-        seeker_id: UUID,
-        provider_id: UUID,
-        skill_id: int,
-        latitude: float,
-        longitude: float,
-    ) -> Booking:
-        """Insert a new INITIATED booking with job_location set."""
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        booking = Booking(
-            seeker_id=seeker_id,
-            provider_id=provider_id,
-            skill_id=skill_id,
-            status=BookingStatus.INITIATED,
-            call_unlocked_at=datetime.now(timezone.utc),
-            job_location=point,
-        )
-        self.db.add(booking)
-        await self.db.flush()  # get the generated ID without committing
-        return booking
 
     async def get_by_id_with_parties(self, booking_id: UUID) -> Booking | None:
         """
@@ -133,6 +146,20 @@ class BookingRepository(BaseRepository[Booking]):
             .options(selectinload(Booking.skill))
             .where(Booking.provider_id == provider_id)
             .where(Booking.status == BookingStatus.IN_PROGRESS)
+            .order_by(Booking.confirmed_at.desc())
+        )
+        return list(result.tuples())
+
+    async def get_provider_completed_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
+        """Bookings with seeker & skill eagerly loaded."""
+        from sqlalchemy.orm import aliased
+
+        result = await self.db.execute(
+            select(Booking, User)
+            .join(User, Booking.seeker_id == User.id)
+            .options(selectinload(Booking.skill))
+            .where(Booking.provider_id == provider_id)
+            .where(Booking.status == BookingStatus.COMPLETED)
             .order_by(Booking.confirmed_at.desc())
         )
         return list(result.tuples())
