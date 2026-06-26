@@ -14,6 +14,28 @@ class BookingRepository(BaseRepository[Booking]):
     def __init__(self, db: AsyncSession):
         super().__init__(Booking, db)
 
+    async def create_booking(
+        self,
+        seeker_id: UUID,
+        provider_id: UUID,
+        skill_id: int,
+        latitude: float,
+        longitude: float,
+    ) -> Booking:
+        """Insert a new INITIATED booking with job_location set."""
+        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        booking = Booking(
+            seeker_id=seeker_id,
+            provider_id=provider_id,
+            skill_id=skill_id,
+            status=BookingStatus.INITIATED,
+            call_unlocked_at=datetime.now(timezone.utc),
+            job_location=point,
+        )
+        self.db.add(booking)
+        await self.db.flush()  # get the generated ID without committing
+        return booking
+
     async def count_active_initiated(self, seeker_id: UUID) -> int:
         """
         Count INITIATED bookings from this seeker within the last 2 hours.
@@ -77,28 +99,6 @@ class BookingRepository(BaseRepository[Booking]):
             .where(Booking.call_unlocked_at <= window_end)
         )
         return list(result.scalars().all())
-
-    async def create_booking(
-        self,
-        seeker_id: UUID,
-        provider_id: UUID,
-        skill_id: int,
-        latitude: float,
-        longitude: float,
-    ) -> Booking:
-        """Insert a new INITIATED booking with job_location set."""
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        booking = Booking(
-            seeker_id=seeker_id,
-            provider_id=provider_id,
-            skill_id=skill_id,
-            status=BookingStatus.INITIATED,
-            call_unlocked_at=datetime.now(timezone.utc),
-            job_location=point,
-        )
-        self.db.add(booking)
-        await self.db.flush()  # get the generated ID without committing
-        return booking
 
     async def get_by_id_with_parties(self, booking_id: UUID) -> Booking | None:
         """
