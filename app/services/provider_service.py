@@ -8,14 +8,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
-from app.models.category_model import Category
-from app.models.provider_profile_model import ProviderProfile, VerificationStatus
-from app.models.provider_skill_link_model import ProviderSkillLink
-from app.models.skill_model import Skill
+from app.models.provider_profile_model import VerificationStatus
 from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
-from app.repositories.skill_repository import SkillRepository
 from fastapi import HTTPException, status
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, PublicProviderProfile, SkillInfo
 from app.services.cloudinary_service import delete_image_from_cloudinary
