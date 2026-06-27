@@ -1160,3 +1160,50 @@ async def register_fcm_token(
 5. **AI review summarization** — the weekly cron job that batches reviews
    and calls an AI model to generate `ai_review_summary_en/bn` on
    `provider_profiles`. This is a nice-to-have for the capstone demo.
+
+
+
+Handle FCM token for multiple user but single device:
+1. On logout — delete the token for that user+device combination:
+```python
+# Add to auth_service.py logout method (which you haven't built yet)
+async def logout(user_id: UUID, fcm_token: str, db: AsyncSession):
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.user_id == user_id)
+        .where(FCMToken.token == fcm_token)
+    )
+    # also invalidate the refresh token / session
+    await db.commit()
+```
+
+2. On login/register — remove the token from any OTHER user first, then upsert for current user:
+```python
+# POST /fcm/token endpoint logic
+
+async def register_fcm_token(
+    user_id: UUID,
+    token: str,
+    device_type: str,
+    db: AsyncSession,
+):
+    # Step 1: Remove this token from any other user who might have it
+    # (handles the "shared device, switched account" case)
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.token == token)
+        .where(FCMToken.user_id != user_id)
+    )
+
+    # Step 2: Upsert for current user
+    # If token already exists for this user, do nothing (same person re-logging in)
+    stmt = insert(FCMToken).values(
+        user_id=user_id,
+        token=token,
+        device_type=device_type,
+    ).on_conflict_do_nothing(index_elements=["token"])
+    # Requires unique constraint on token column in your DB
+
+    await db.execute(stmt)
+    await db.commit()
+```

@@ -105,6 +105,24 @@ Response 200:
 On success → check `role` → navigate to correct home screen.
 
 > **After any login/register:** Immediately call `POST /fcm/token` with the device's FCM token so the backend can send push notifications to this device.
+```dart
+// Flutter — call this after every login/register
+// AND register onTokenRefresh to catch Firebase-initiated rotations
+
+final token = await FirebaseMessaging.instance.getToken();
+await api.post('/fcm/token', {
+  "token": token,
+  "device_type": "ANDROID"   // or "IOS", "WEB"
+});
+
+// Handle Firebase rotating the token automatically
+FirebaseMessaging.instance.onTokenRefresh.listen((newToken) async {
+  await api.post('/fcm/token', {
+    "token": newToken,
+    "device_type": "ANDROID"
+  });
+});
+```
 
 ---
 
@@ -159,7 +177,7 @@ Request: { "working_radius_km": 10 }
 ---
 
 ### SCREEN_5 — Edit Provider Profile
-**Get current data:** `GET /provider/dashboard` (reuse same endpoint)
+**Get current data:** `GET /users/me`
 
 **Update profile:**
 `PATCH /provider/me/update_profile`
@@ -189,7 +207,7 @@ Request: { "skill_ids": [4, 5] }
 ### SCREEN_19 / SCREEN_10 / SCREEN_29 — Verification Status & NID Upload
 These three screens all represent the same verification state with different UI treatments. Use the same API.
 
-**Check verification status:** `GET /provider/dashboard`
+**Check verification status:** `GET /users/me`
 → Check `verification_status` field:
 - `"pending"` → show "Under Review" state
 - `"rejected"` → show rejection screen (SCREEN_19/10/29) with `verification_rejection_reason`
