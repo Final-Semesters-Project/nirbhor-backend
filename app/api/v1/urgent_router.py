@@ -7,7 +7,7 @@ from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
-from app.schemas.urgent_schema import ClaimedBroadcastResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastResponse
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
 from app.services.urgent_service import UrgentService
 
 
@@ -16,7 +16,7 @@ router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
 
 @router.post(
     "/broadcast",
-    response_model=UrgentBroadcastResponse,
+    response_model=UrgentBroadcastCreateResponse,
     status_code=201
 )
 async def create_urgent_broadcast(
@@ -38,7 +38,7 @@ async def create_urgent_broadcast(
     )
 
 
-@router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponse)
+@router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponseToProvider)
 async def claim_urgent_broadcast(
     broadcast_id: UUID,
     current_user: User = Depends(get_current_provider),
@@ -69,6 +69,26 @@ async def get_broadcast_detail(
     Returns skill, status, and seeker coordinates for navigation.
     """
     return await UrgentService.get_broadcast(
+        broadcast_id=broadcast_id,
+        db=db,
+        lang=lang,
+    )
+
+
+@router.get("/broadcast/{broadcast_id}/status", response_model=BroadcastStatusResponseForSeeker)
+async def get_broadcast_status(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Seeker polls this to check if their urgent broadcast was claimed.
+    Frontend polls every 10-15 seconds while the countdown timer is showing.
+    When status changes to CLAIMED, show the provider name on screen.
+    Stop polling when status is CLAIMED or EXPIRED.
+    """
+    return await UrgentService.get_broadcast_status(
         broadcast_id=broadcast_id,
         db=db,
         lang=lang,

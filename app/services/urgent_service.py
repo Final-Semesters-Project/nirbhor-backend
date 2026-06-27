@@ -1,3 +1,4 @@
+from datetime import datetime, timezone
 from typing import cast
 from uuid import UUID
 from sqlalchemy import select
@@ -9,7 +10,7 @@ from app.models.skill_model import Skill
 from app.models.urgent_broadcast_model import BroadcastStatus
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastResponse, ClaimedBroadcastResponse
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
 
 
 class UrgentService:
@@ -20,7 +21,7 @@ class UrgentService:
         seeker_id: UUID,
         db: AsyncSession,
         lang: str,
-    ) -> UrgentBroadcastResponse:
+    ) -> UrgentBroadcastCreateResponse:
         """
         This is the first step of creating an urgent broadcast.
         Seeker triggers 'Need It NOW/Urgent'.
@@ -55,7 +56,7 @@ class UrgentService:
                 f"Urgent broadcast {broadcast.id}: no nearby smartphone providers found"
             )
 
-        return UrgentBroadcastResponse(
+        return UrgentBroadcastCreateResponse(
             broadcast_id=broadcast.id,
             status=broadcast.status,
             expires_at=broadcast.expires_at,
@@ -111,7 +112,7 @@ class UrgentService:
         provider_id: UUID,
         db: AsyncSession,
         lang: str,
-    ) -> ClaimedBroadcastResponse:
+    ) -> ClaimedBroadcastResponseToProvider:
         """
         Atomic claim — only the first provider to hit this wins.
         Uses with_for_update() pessimistic lock in the repository.
@@ -135,7 +136,7 @@ class UrgentService:
                 # This provider already claimed it (duplicate tap) — idempotent OK
                 await db.commit()
                 return (
-                    ClaimedBroadcastResponse(
+                    ClaimedBroadcastResponseToProvider(
                         broadcast_id=broadcast.id,
                         status=BroadcastStatus.CLAIMED,
                         seeker_phone=seeker.phone_en,
@@ -158,10 +159,23 @@ class UrgentService:
 
         # FIX: Shouldn't we send the seeker phone number to the provider when he claims the broadcast? so that they can communicate? After that if the provider refuse to come then the seeker can initiate another broadcast?
         return (
-            ClaimedBroadcastResponse(
+            ClaimedBroadcastResponseToProvider(
                 broadcast_id=broadcast.id,
                 status=broadcast.status,
                 seeker_phone=seeker.phone_en,
                 seeker_name=seeker.name_bn if lang == "bn" else seeker.name_en
             )
         )
+
+    @staticmethod
+    async def get_broadcast_status(
+        broadcast_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> BroadcastStatusResponseForSeeker:
+        urgent_repo = UrgentBroadcastRepository(db)
+        data = await urgent_repo.get_broadcast_status(broadcast_id)
+
+        if not data:
+            raise DomainValidationError(t("broadcast_not_found", lang))
+        return BroadcastStatusResponseForSeeker(**data)

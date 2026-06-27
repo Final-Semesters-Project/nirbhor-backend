@@ -2,6 +2,7 @@ from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from app.models.fcm_token import FCMToken
 from app.models.provider_profile_model import ProviderProfile
 from app.models.urgent_broadcast_model import BroadcastStatus, UrgentBroadcast
@@ -167,3 +168,39 @@ class UrgentBroadcastRepository:
         seeker_ids = [row[0] for row in result.all()]
 
         return seeker_ids
+
+    async def get_broadcast_status(
+        self, broadcast_id: UUID
+    ) -> dict | None:
+        """Fetch broadcast + claimed provider name if claimed."""
+        from app.models.user_model import User as UserModel
+
+        ClaimedProvider = aliased(UserModel, name="claimed_provider")
+
+        result = await self.db.execute(
+            select(UrgentBroadcast, ClaimedProvider.name_en.label("claimed_name"))
+            .outerjoin(
+                ClaimedProvider,
+                UrgentBroadcast.claimed_by_provider_id == ClaimedProvider.id,
+            )
+            .where(UrgentBroadcast.id == broadcast_id)
+        )
+        row = result.first()
+        if not row:
+            return None
+
+        broadcast, claimed_name = row
+
+        seconds_remaining = max(
+            0,
+            int((broadcast.expires_at - datetime.now(timezone.utc)).total_seconds())
+        )
+
+        return {
+            "broadcast_id": broadcast.id,
+            "status": broadcast.status,
+            "expires_at": broadcast.expires_at,
+            "claimed_by_name": claimed_name,
+            "seconds_remaining": seconds_remaining,
+            # "claimed_at": None,  # add claimed_at column to model if needed
+        }

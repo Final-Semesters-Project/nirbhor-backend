@@ -1,5 +1,4 @@
 **Next batch (core app flows):**
-- `GET /api/v1/providers/{provider_id}/public` — seeker taps provider card to see full profile
 - `GET /api/v1/urgent/broadcast/{id}/status` — seeker polls to see if broadcast was claimed (or use FCM)
 
 **After that (admin panel):**
@@ -44,24 +43,6 @@ app/
 ### `app/schemas/provider_schema.py` — add public profile response
 
 ### `app/schemas/urgent_schema.py` — add status response
-
-```python
-# Add to your existing urgent_schema.py
-
-class BroadcastStatusResponse(BaseModel):
-    """
-    Seeker polls this to check if their urgent broadcast was claimed.
-    Returns claimed provider's name only — phone is shared via FCM separately.
-    In your current stub phase the seeker can poll this endpoint as fallback.
-    """
-    broadcast_id: UUID
-    status: BroadcastStatus
-    expires_at: datetime
-    claimed_by_name: str | None     # None if not yet claimed
-    claimed_at: datetime | None     # None if not yet claimed
-
-    model_config = {"from_attributes": True}
-```
 
 ### `app/schemas/admin_schema.py` — new
 
@@ -184,46 +165,7 @@ class AdminAnalyticsResponse(BaseModel):
 
 ### `app/repositories/provider_repository.py` — add public profile fetch
 
-```python
-# Add to your existing ProviderRepository
-
-
-```
-
 ### `app/repositories/urgent_repository.py` — add status fetch
-
-```python
-# Add to your existing UrgentRepository
-
-async def get_broadcast_status(
-    self, broadcast_id: UUID
-) -> dict | None:
-    """Fetch broadcast + claimed provider name if claimed."""
-    from app.models.user import User as UserModel
-
-    ClaimedProvider = aliased(UserModel, name="claimed_provider")
-
-    result = await self.db.execute(
-        select(UrgentBroadcast, ClaimedProvider.name_en.label("claimed_name"))
-        .outerjoin(
-            ClaimedProvider,
-            UrgentBroadcast.claimed_by_provider_id == ClaimedProvider.id,
-        )
-        .where(UrgentBroadcast.id == broadcast_id)
-    )
-    row = result.first()
-    if not row:
-        return None
-
-    broadcast, claimed_name = row
-    return {
-        "broadcast_id": broadcast.id,
-        "status": broadcast.status,
-        "expires_at": broadcast.expires_at,
-        "claimed_by_name": claimed_name,
-        "claimed_at": None,  # add claimed_at column to model if needed
-    }
-```
 
 ### `app/repositories/admin_repository.py` — new
 
@@ -473,22 +415,6 @@ class AdminRepository:
 
 ### `app/services/urgent_service.py` — add broadcast status
 
-```python
-# Add to your existing UrgentService
-
-@staticmethod
-async def get_broadcast_status(
-    broadcast_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> BroadcastStatusResponse:
-    urgent_repo = UrgentRepository(db)
-    data = await urgent_repo.get_broadcast_status(broadcast_id)
-    if not data:
-        raise DomainValidationError(t("broadcast_not_found", lang))
-    return BroadcastStatusResponse(**data)
-```
-
 ### `app/services/admin_service.py` — new
 
 ```python
@@ -718,31 +644,6 @@ class AdminService:
 ### `app/api/v1/providers.py` — add public profile endpoint
 
 ### `app/api/v1/urgent.py` — add status endpoint
-
-```python
-# Add to your existing urgent router
-
-from app.schemas.urgent_schema import BroadcastStatusResponse
-
-@router.get("/broadcast/{broadcast_id}/status", response_model=BroadcastStatusResponse)
-async def get_broadcast_status(
-    broadcast_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker polls this to check if their urgent broadcast was claimed.
-    Frontend polls every 10-15 seconds while the countdown timer is showing.
-    When status changes to CLAIMED, show the provider name on screen.
-    Stop polling when status is CLAIMED or EXPIRED.
-    """
-    return await UrgentService.get_broadcast_status(
-        broadcast_id=broadcast_id,
-        db=db,
-        lang=lang,
-    )
-```
 
 ### `app/api/v1/admin.py` — new
 
