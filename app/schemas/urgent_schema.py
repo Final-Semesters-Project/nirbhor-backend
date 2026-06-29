@@ -10,7 +10,8 @@ class UrgentBroadcastCreateSchema(BaseModel):
     longitude: float = Field(..., description="Seeker's longitude")
 
 
-class UrgentBroadcastResponse(BaseModel):
+class UrgentBroadcastCreateResponse(BaseModel):
+    """Seeker receives this when they initiate an urgent broadcast."""
     broadcast_id: UUID
     status: BroadcastStatus
     expires_at: datetime
@@ -19,7 +20,24 @@ class UrgentBroadcastResponse(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
 
-class ClaimedBroadcastResponse(BaseModel):
+class BroadcastStatusResponseForSeeker(BaseModel):
+    """
+    Used when FCM fails to show the provider data to seeker then use this as fallback.
+    Seeker polls this to check if their urgent broadcast was claimed.
+    Returns claimed provider's name only — phone is shared via FCM separately.
+    In your current stub phase the seeker can poll this endpoint as fallback.
+    """
+    broadcast_id: UUID
+    status: BroadcastStatus
+    expires_at: datetime
+    seconds_remaining: int
+    claimed_by_name: str | None     # None if not yet claimed
+    # claimed_at: datetime | None     # None if not yet claimed
+
+    model_config = {"from_attributes": True}
+
+
+class ClaimedBroadcastResponseToProvider(BaseModel):
     """
     Returned to provider after successfully claiming a broadcast.
     Includes seeker phone so provider can call immediately.

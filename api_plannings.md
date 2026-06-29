@@ -1,5 +1,4 @@
 **Next batch (core app flows):**
-- `GET /api/v1/providers/{provider_id}/public` — seeker taps provider card to see full profile
 - `GET /api/v1/urgent/broadcast/{id}/status` — seeker polls to see if broadcast was claimed (or use FCM)
 
 **After that (admin panel):**
@@ -45,185 +44,13 @@ app/
 
 ### `app/schemas/urgent_schema.py` — add status response
 
-```python
-# Add to your existing urgent_schema.py
-
-class BroadcastStatusResponse(BaseModel):
-    """
-    Seeker polls this to check if their urgent broadcast was claimed.
-    Returns claimed provider's name only — phone is shared via FCM separately.
-    In your current stub phase the seeker can poll this endpoint as fallback.
-    """
-    broadcast_id: UUID
-    status: BroadcastStatus
-    expires_at: datetime
-    claimed_by_name: str | None     # None if not yet claimed
-    claimed_at: datetime | None     # None if not yet claimed
-
-    model_config = {"from_attributes": True}
-```
-
 ### `app/schemas/admin_schema.py` — new
-
-```python
-from pydantic import BaseModel
-from uuid import UUID
-from datetime import datetime
-from typing import Literal
-
-
-# ── Dashboard ──────────────────────────────────────────────────────────────────
-
-class AdminDashboardResponse(BaseModel):
-    total_users: int
-    total_providers: int
-    total_seekers: int
-    total_bookings: int
-    pending_verifications: int
-    pending_reports: int
-    active_providers_today: int     # last_active_at within 24 hours
-
-
-# ── Verifications ──────────────────────────────────────────────────────────────
-
-class VerificationListItem(BaseModel):
-    user_id: UUID
-    name: str
-    phone: str
-    photo_url: str | None
-    nid_front_url: str | None
-    nid_back_url: str | None
-    verification_level: str
-    verification_status: str
-    submitted_at: datetime          # created_at of the provider_profile
-
-    model_config = {"from_attributes": True}
-
-
-class VerificationActionSchema(BaseModel):
-    """Admin approves or rejects a provider's verification request."""
-    action: Literal["approve", "reject"]
-    rejection_reason: str | None = None
-
-
-class VerificationActionResponse(BaseModel):
-    user_id: UUID
-    verification_status: str
-    verification_level: str
-    message: str
-
-
-# ── Reports ────────────────────────────────────────────────────────────────────
-
-class ReportListItem(BaseModel):
-    report_id: UUID
-    reporter_name: str
-    reported_user_name: str
-    reported_user_role: str
-    reason: str
-    status: str
-    booking_id: UUID | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class ReportActionSchema(BaseModel):
-    action: Literal["dismiss", "suspend", "reviewed"]
-
-
-class ReportActionResponse(BaseModel):
-    report_id: UUID
-    status: str
-    affected_user_id: UUID | None = None
-
-
-# ── Users ──────────────────────────────────────────────────────────────────────
-
-class AdminUserListItem(BaseModel):
-    user_id: UUID
-    name: str
-    phone: str
-    role: str
-    is_active: bool
-    last_active_at: datetime | None
-    created_at: datetime
-
-    model_config = {"from_attributes": True}
-
-
-class AdminUserDetail(AdminUserListItem):
-    """Extended detail for single user view."""
-    total_bookings: int
-    average_rating: float | None    # providers only
-    verification_level: str | None  # providers only
-    verification_status: str | None # providers only
-
-
-# ── Analytics ──────────────────────────────────────────────────────────────────
-
-class WeeklyBookingPoint(BaseModel):
-    week_start: datetime
-    count: int
-
-
-class AdminAnalyticsResponse(BaseModel):
-    total_users: int
-    total_bookings: int
-    average_provider_rating: float | None
-    active_providers_count: int         # active in last 30 days
-    seeker_count: int
-    provider_count: int
-    seeker_to_provider_ratio: float | None
-    bookings_per_week: list[WeeklyBookingPoint]
-```
-
----
 
 ## 2. Repositories
 
 ### `app/repositories/provider_repository.py` — add public profile fetch
 
-```python
-# Add to your existing ProviderRepository
-
-
-```
-
 ### `app/repositories/urgent_repository.py` — add status fetch
-
-```python
-# Add to your existing UrgentRepository
-
-async def get_broadcast_status(
-    self, broadcast_id: UUID
-) -> dict | None:
-    """Fetch broadcast + claimed provider name if claimed."""
-    from app.models.user import User as UserModel
-
-    ClaimedProvider = aliased(UserModel, name="claimed_provider")
-
-    result = await self.db.execute(
-        select(UrgentBroadcast, ClaimedProvider.name_en.label("claimed_name"))
-        .outerjoin(
-            ClaimedProvider,
-            UrgentBroadcast.claimed_by_provider_id == ClaimedProvider.id,
-        )
-        .where(UrgentBroadcast.id == broadcast_id)
-    )
-    row = result.first()
-    if not row:
-        return None
-
-    broadcast, claimed_name = row
-    return {
-        "broadcast_id": broadcast.id,
-        "status": broadcast.status,
-        "expires_at": broadcast.expires_at,
-        "claimed_by_name": claimed_name,
-        "claimed_at": None,  # add claimed_at column to model if needed
-    }
-```
 
 ### `app/repositories/admin_repository.py` — new
 
@@ -245,46 +72,6 @@ class AdminRepository:
         self.db = db
 
     # ── Dashboard ─────────────────────────────────────────────────────────────
-
-    async def get_dashboard_counts(self) -> dict:
-        now = datetime.now(timezone.utc)
-
-        total_users = await self.db.scalar(select(func.count()).select_from(User))
-        total_providers = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.PROVIDER)
-        )
-        total_seekers = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.SEEKER)
-        )
-        total_bookings = await self.db.scalar(
-            select(func.count()).select_from(Booking)
-        )
-        pending_verifications = await self.db.scalar(
-            select(func.count())
-            .select_from(ProviderProfile)
-            .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
-        )
-        pending_reports = await self.db.scalar(
-            select(func.count())
-            .select_from(UserReport)
-            .where(UserReport.status == ReportStatus.PENDING)
-        )
-        active_today = await self.db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.role == Role.PROVIDER)
-            .where(User.last_active_at >= now - timedelta(hours=24))
-        )
-
-        return {
-            "total_users": total_users or 0,
-            "total_providers": total_providers or 0,
-            "total_seekers": total_seekers or 0,
-            "total_bookings": total_bookings or 0,
-            "pending_verifications": pending_verifications or 0,
-            "pending_reports": pending_reports or 0,
-            "active_providers_today": active_today or 0,
-        }
 
     # ── Verifications ─────────────────────────────────────────────────────────
 
@@ -473,22 +260,6 @@ class AdminRepository:
 
 ### `app/services/urgent_service.py` — add broadcast status
 
-```python
-# Add to your existing UrgentService
-
-@staticmethod
-async def get_broadcast_status(
-    broadcast_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> BroadcastStatusResponse:
-    urgent_repo = UrgentRepository(db)
-    data = await urgent_repo.get_broadcast_status(broadcast_id)
-    if not data:
-        raise DomainValidationError(t("broadcast_not_found", lang))
-    return BroadcastStatusResponse(**data)
-```
-
 ### `app/services/admin_service.py` — new
 
 ```python
@@ -515,33 +286,6 @@ from app.core.i18n import t
 
 
 class AdminService:
-
-    @staticmethod
-    async def get_dashboard(db: AsyncSession) -> AdminDashboardResponse:
-        repo = AdminRepository(db)
-        data = await repo.get_dashboard_counts()
-        return AdminDashboardResponse(**data)
-
-    @staticmethod
-    async def get_pending_verifications(
-        db: AsyncSession, lang: str
-    ) -> list[VerificationListItem]:
-        repo = AdminRepository(db)
-        rows = await repo.get_pending_verifications()
-        return [
-            VerificationListItem(
-                user_id=user.id,
-                name=user.name_en,
-                phone=user.phone_en,
-                photo_url=profile.photo_url,
-                nid_front_url=profile.nid_front_url,
-                nid_back_url=profile.nid_back_url,
-                verification_level=profile.verification_level.value,
-                verification_status=profile.verification_status.value,
-                submitted_at=profile.updated_at or profile.created_at,
-            )
-            for user, profile in rows
-        ]
 
     @staticmethod
     async def handle_verification(
@@ -719,89 +463,9 @@ class AdminService:
 
 ### `app/api/v1/urgent.py` — add status endpoint
 
-```python
-# Add to your existing urgent router
-
-from app.schemas.urgent_schema import BroadcastStatusResponse
-
-@router.get("/broadcast/{broadcast_id}/status", response_model=BroadcastStatusResponse)
-async def get_broadcast_status(
-    broadcast_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker polls this to check if their urgent broadcast was claimed.
-    Frontend polls every 10-15 seconds while the countdown timer is showing.
-    When status changes to CLAIMED, show the provider name on screen.
-    Stop polling when status is CLAIMED or EXPIRED.
-    """
-    return await UrgentService.get_broadcast_status(
-        broadcast_id=broadcast_id,
-        db=db,
-        lang=lang,
-    )
-```
-
 ### `app/api/v1/admin.py` — new
 
 ```python
-from uuid import UUID
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.session import get_db_session
-from app.core.i18n import get_lang
-from app.core.security import get_current_user
-from app.models.user import User, Role
-from app.schemas.admin_schema import (
-    AdminDashboardResponse,
-    VerificationListItem,
-    VerificationActionSchema,
-    VerificationActionResponse,
-    ReportListItem,
-    ReportActionSchema,
-    ReportActionResponse,
-    AdminUserListItem,
-    AdminUserDetail,
-    AdminAnalyticsResponse,
-)
-from app.services.admin_service import AdminService
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
-
-router = APIRouter()
-
-
-def require_admin(current_user: User = Depends(get_current_user)) -> User:
-    """Dependency: blocks non-admin users from all admin routes."""
-    if current_user.role != Role.ADMIN:
-        raise DomainValidationError("Admin access required.")
-    return current_user
-
-
-# ── Dashboard ──────────────────────────────────────────────────────────────────
-
-@router.get("/dashboard", response_model=AdminDashboardResponse)
-async def admin_dashboard(
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-):
-    return await AdminService.get_dashboard(db=db)
-
-
-# ── Verifications ──────────────────────────────────────────────────────────────
-
-@router.get("/verifications", response_model=list[VerificationListItem])
-async def list_pending_verifications(
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """List all providers with PENDING verification status, oldest first."""
-    return await AdminService.get_pending_verifications(db=db, lang=lang)
-
 
 @router.patch(
     "/verifications/{provider_id}",
@@ -1259,3 +923,50 @@ async def register_fcm_token(
 5. **AI review summarization** — the weekly cron job that batches reviews
    and calls an AI model to generate `ai_review_summary_en/bn` on
    `provider_profiles`. This is a nice-to-have for the capstone demo.
+
+
+
+Handle FCM token for multiple user but single device:
+1. On logout — delete the token for that user+device combination:
+```python
+# Add to auth_service.py logout method (which you haven't built yet)
+async def logout(user_id: UUID, fcm_token: str, db: AsyncSession):
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.user_id == user_id)
+        .where(FCMToken.token == fcm_token)
+    )
+    # also invalidate the refresh token / session
+    await db.commit()
+```
+
+2. On login/register — remove the token from any OTHER user first, then upsert for current user:
+```python
+# POST /fcm/token endpoint logic
+
+async def register_fcm_token(
+    user_id: UUID,
+    token: str,
+    device_type: str,
+    db: AsyncSession,
+):
+    # Step 1: Remove this token from any other user who might have it
+    # (handles the "shared device, switched account" case)
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.token == token)
+        .where(FCMToken.user_id != user_id)
+    )
+
+    # Step 2: Upsert for current user
+    # If token already exists for this user, do nothing (same person re-logging in)
+    stmt = insert(FCMToken).values(
+        user_id=user_id,
+        token=token,
+        device_type=device_type,
+    ).on_conflict_do_nothing(index_elements=["token"])
+    # Requires unique constraint on token column in your DB
+
+    await db.execute(stmt)
+    await db.commit()
+```
