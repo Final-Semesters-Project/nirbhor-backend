@@ -38,7 +38,8 @@ class User(UUIDMixin, TimestampMixin, Base):
         ),
         nullable=False,
         default=Role.SEEKER,
-        server_default=Role.SEEKER.value
+        server_default=Role.SEEKER.value,
+        # index=True
     )
 
     is_active: Mapped[bool] = mapped_column(
@@ -49,7 +50,8 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     last_active_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
-        nullable=True
+        nullable=True,
+        # index=True
     )
 
     firebase_uid: Mapped[str | None] = mapped_column(
