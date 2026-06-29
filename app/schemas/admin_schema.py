@@ -26,8 +26,8 @@ class VerificationListItem(BaseModel):
     name: str
     phone: str
     photo_url: str | None
-    nid_front_url: str | None
-    nid_back_url: str | None
+    nid_url_front: str | None
+    nid_url_back: str | None
     verification_level: str
     verification_status: str
     submitted_at: datetime          # created_at of the provider_profile

@@ -1,5 +1,6 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
+from typing import Sequence
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
@@ -41,22 +42,6 @@ class AdminRepository(BaseRepository):
         )
         user_counts = user_counts_result.mappings().first()
 
-        # total_users = await self.db.scalar(select(func.count()).select_from(User))
-        # total_providers = await self.db.scalar(
-        #     select(func.count()).select_from(
-        #         User).where(User.role == Role.PROVIDER)
-        # )
-        # total_seekers = await self.db.scalar(
-        #     select(func.count()).select_from(
-        #         User).where(User.role == Role.SEEKER)
-        # )
-        # active_today = await self.db.scalar(
-        #     select(func.count())
-        #     .select_from(User)
-        #     .where(User.role == Role.PROVIDER)
-        #     .where(User.last_active_at >= now - timedelta(hours=24))
-        # )
-
         # ── Queries 2, 3, 4: different tables — run in parallel ───────────────
         # asyncio.gather fires all three at the same time.
         # Total wait = slowest single query, not sum of all three.
@@ -75,19 +60,6 @@ class AdminRepository(BaseRepository):
                 .where(UserReport.status == ReportStatus.PENDING)
             ),
         )
-        # total_bookings = await self.db.scalar(
-        #     select(func.count()).select_from(Booking)
-        # )
-        # pending_verifications = await self.db.scalar(
-        #     select(func.count())
-        #     .select_from(ProviderProfile)
-        #     .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
-        # )
-        # pending_reports = await self.db.scalar(
-        #     select(func.count())
-        #     .select_from(UserReport)
-        #     .where(UserReport.status == ReportStatus.PENDING)
-        # )
 
         return {
             "total_users":            (user_counts or {}).get("total_users") or 0,
@@ -98,3 +70,14 @@ class AdminRepository(BaseRepository):
             "pending_verifications":  pending_verifications or 0,
             "pending_reports":        pending_reports or 0,
         }
+
+    # ── Verifications ─────────────────────────────────────────────────────────
+
+    async def get_pending_verifications(self) -> Sequence:
+        result = await self.db.execute(
+            select(User, ProviderProfile)
+            .join(ProviderProfile, User.id == ProviderProfile.user_id)
+            .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
+            .order_by(ProviderProfile.updated_at.asc())   # oldest first
+        )
+        return result.all()

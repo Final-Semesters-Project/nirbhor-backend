@@ -288,27 +288,6 @@ from app.core.i18n import t
 class AdminService:
 
     @staticmethod
-    async def get_pending_verifications(
-        db: AsyncSession, lang: str
-    ) -> list[VerificationListItem]:
-        repo = AdminRepository(db)
-        rows = await repo.get_pending_verifications()
-        return [
-            VerificationListItem(
-                user_id=user.id,
-                name=user.name_en,
-                phone=user.phone_en,
-                photo_url=profile.photo_url,
-                nid_front_url=profile.nid_front_url,
-                nid_back_url=profile.nid_back_url,
-                verification_level=profile.verification_level.value,
-                verification_status=profile.verification_status.value,
-                submitted_at=profile.updated_at or profile.created_at,
-            )
-            for user, profile in rows
-        ]
-
-    @staticmethod
     async def handle_verification(
         provider_id: UUID,
         data: VerificationActionSchema,
@@ -487,17 +466,6 @@ class AdminService:
 ### `app/api/v1/admin.py` — new
 
 ```python
-# ── Verifications ──────────────────────────────────────────────────────────────
-
-@router.get("/verifications", response_model=list[VerificationListItem])
-async def list_pending_verifications(
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """List all providers with PENDING verification status, oldest first."""
-    return await AdminService.get_pending_verifications(db=db, lang=lang)
-
 
 @router.patch(
     "/verifications/{provider_id}",

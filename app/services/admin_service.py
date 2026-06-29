@@ -25,3 +25,24 @@ class AdminService:
         repo = AdminRepository(db)
         data = await repo.get_dashboard_counts()
         return AdminDashboardResponse(**data)
+
+    @staticmethod
+    async def get_pending_verifications(
+        db: AsyncSession, lang: str
+    ) -> list[VerificationListItem]:
+        repo = AdminRepository(db)
+        rows = await repo.get_pending_verifications()
+        return [
+            VerificationListItem(
+                user_id=user.id,
+                name=user.name_en,
+                phone=user.phone_en,
+                photo_url=profile.photo_url,
+                nid_url_front=profile.nid_url_front,
+                nid_url_back=profile.nid_url_back,
+                verification_level=profile.verification_level.value,
+                verification_status=profile.verification_status.value,
+                submitted_at=profile.updated_at or profile.created_at,
+            )
+            for user, profile in rows
+        ]

@@ -33,3 +33,15 @@ async def admin_dashboard(
     db: AsyncSession = Depends(get_db_session),
 ):
     return await AdminService.get_dashboard(db=db)
+
+
+# ── Verifications ──────────────────────────────────────────────────────────────
+
+@router.get("/verifications", response_model=list[VerificationListItem])
+async def list_pending_verifications(
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """List all providers with PENDING verification status, oldest first."""
+    return await AdminService.get_pending_verifications(db=db, lang=lang)
