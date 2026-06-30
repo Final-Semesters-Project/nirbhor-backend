@@ -87,6 +87,7 @@ MESSAGES = {
         "report_status_updated": "Report status updated.",
         "admin_only": "Admin access required.",
         "rejection_reason_required": "Rejection reason is required.",
+        "verification_locked": "Verification is locked. Can not update.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -169,7 +170,8 @@ MESSAGES = {
         "user_status_updated": "ব্যবহারকারীর অবস্থা আপডেট হয়েছে।",
         "report_status_updated": "রিপোর্টের অবস্থা আপডেট হয়েছে।",
         "admin_only": "শুধুমাত্র অ্যাডমিন অ্যাক্সেস প্রয়োজন।",
-        "rejection_reason_required": "প্রত্যাখ্যানের কারণ প্রদান করুন।"
+        "rejection_reason_required": "প্রত্যাখ্যানের কারণ প্রদান করুন।",
+        "verification_locked": "যাচাইকরণ লক হয়েছে। আপডেট করা যায়নি।",
     }
 }
 

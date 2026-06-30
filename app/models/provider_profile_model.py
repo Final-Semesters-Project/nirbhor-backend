@@ -15,6 +15,7 @@ class VerificationLevel(str, enum.Enum):
 
 
 class VerificationStatus(str, enum.Enum):
+    NOT_INITIATED = "not_initiated"
     PENDING = "pending"  # set automatically when provider uploads nid and Profile Picture
     APPROVED = "approved"  # set manually by admin
     REJECTED = "rejected"  # set manually by admin with reason
@@ -71,8 +72,8 @@ class ProviderProfile(TimestampMixin, Base):
             values_callable=lambda x: [e.value for e in x]
         ),
         nullable=False,
-        default=VerificationStatus.PENDING,
-        server_default=VerificationStatus.PENDING.value
+        default=VerificationStatus.NOT_INITIATED,
+        server_default=VerificationStatus.NOT_INITIATED.value
     )
 
     verification_rejection_reason: Mapped[str | None] = mapped_column(
