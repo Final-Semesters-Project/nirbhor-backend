@@ -55,65 +55,14 @@ app/
 ### `app/repositories/admin_repository.py` — new
 
 ```python
-from uuid import UUID
-from datetime import datetime, timedelta, timezone
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case, update
-from sqlalchemy.orm import aliased
-
-from app.models.user import User, Role
-from app.models.provider_profile import ProviderProfile, VerificationStatus, VerificationLevel
-from app.models.booking import Booking, BookingStatus
-from app.models.user_report import UserReport, ReportStatus
 
 
 class AdminRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
     # ── Dashboard ─────────────────────────────────────────────────────────────
 
     # ── Verifications ─────────────────────────────────────────────────────────
 
     # ── Reports ───────────────────────────────────────────────────────────────
-
-    async def get_reports(self, status_filter: str | None = None) -> list:
-        Reporter = aliased(User, name="reporter")
-        Reported = aliased(User, name="reported")
-
-        stmt = (
-            select(UserReport, Reporter, Reported)
-            .join(Reporter, UserReport.reporter_id == Reporter.id)
-            .join(Reported, UserReport.reported_user_id == Reported.id)
-            .order_by(UserReport.created_at.desc())
-        )
-        if status_filter:
-            stmt = stmt.where(UserReport.status == status_filter)
-
-        result = await self.db.execute(stmt)
-        return result.all()
-
-    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
-        result = await self.db.execute(
-            select(UserReport).where(UserReport.id == report_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def update_report_status(
-        self,
-        report_id: UUID,
-        new_status: ReportStatus,
-    ) -> UserReport:
-        report = await self.db.get(UserReport, report_id)
-        report.status = new_status
-        await self.db.flush()
-        return report
-
-    async def suspend_user(self, user_id: UUID) -> User:
-        user = await self.db.get(User, user_id)
-        user.is_active = False
-        await self.db.flush()
-        return user
 
     # ── Users ─────────────────────────────────────────────────────────────────
 
@@ -227,90 +176,8 @@ class AdminRepository:
 ### `app/services/admin_service.py` — new
 
 ```python
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
-
-from app.repositories.admin_repository import AdminRepository
-from app.schemas.admin_schema import (
-    AdminDashboardResponse,
-    VerificationListItem,
-    VerificationActionSchema,
-    VerificationActionResponse,
-    ReportListItem,
-    ReportActionSchema,
-    ReportActionResponse,
-    AdminUserListItem,
-    AdminUserDetail,
-    AdminAnalyticsResponse,
-)
-from app.models.user_report import ReportStatus
-from app.core.exceptions import DomainValidationError, DomainIntegrityError
-from app.core.i18n import t
-
 
 class AdminService:
-
-    @staticmethod
-    async def get_reports(
-        db: AsyncSession,
-        lang: str,
-        status_filter: str | None = None,
-    ) -> list[ReportListItem]:
-        repo = AdminRepository(db)
-        rows = await repo.get_reports(status_filter)
-        return [
-            ReportListItem(
-                report_id=report.id,
-                reporter_name=reporter.name_en,
-                reported_user_name=reported.name_en,
-                reported_user_role=reported.role.value,
-                reason=report.reason,
-                status=report.status.value,
-                booking_id=report.booking_id,
-                created_at=report.created_at,
-            )
-            for report, reporter, reported in rows
-        ]
-
-    @staticmethod
-    async def handle_report(
-        report_id: UUID,
-        data: ReportActionSchema,
-        db: AsyncSession,
-        lang: str,
-    ) -> ReportActionResponse:
-        repo = AdminRepository(db)
-
-        report = await repo.get_report_by_id(report_id)
-        if not report:
-            raise DomainValidationError(t("report_not_found", lang))
-
-        affected_user_id = None
-
-        if data.action == "suspend":
-            # Suspend the reported user and mark report as ACTION_TAKEN
-            await repo.suspend_user(report.reported_user_id)
-            await repo.update_report_status(report_id, ReportStatus.ACTION_TAKEN)
-            affected_user_id = report.reported_user_id
-            logger.info(
-                f"Admin suspended user {report.reported_user_id} "
-                f"via report {report_id}"
-            )
-        elif data.action == "dismiss":
-            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
-            logger.info(f"Admin dismissed report {report_id}")
-        elif data.action == "reviewed":
-            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
-
-        await db.commit()
-
-        return ReportActionResponse(
-            report_id=report_id,
-            status=data.action,
-            affected_user_id=affected_user_id,
-        )
-
     @staticmethod
     async def get_users(
         db: AsyncSession,
@@ -397,15 +264,6 @@ class AdminService:
 
 
 # ── Reports ────────────────────────────────────────────────────────────────────
-
-@router.get("/reports", response_model=list[ReportListItem])
-async def list_reports(
-    status: str | None = Query(None, description="Filter: PENDING, REVIEWED, ACTION_TAKEN"),
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    return await AdminService.get_reports(db=db, lang=lang, status_filter=status)
 
 
 @router.patch("/reports/{report_id}", response_model=ReportActionResponse)

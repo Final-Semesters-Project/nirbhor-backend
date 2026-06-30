@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
 from app.models.user_model import User, Role
@@ -113,3 +114,49 @@ class AdminRepository(BaseRepository):
         provider_profile.verification_rejection_reason = reason
         await self.db.flush()
         return provider_profile
+
+    # ── Reports ───────────────────────────────────────────────────────────────
+
+    async def get_reports(self, status_filter: str | None = None) -> Sequence:
+        Reporter = aliased(User, name="reporter")
+        Reported = aliased(User, name="reported")
+
+        stmt = (
+            select(UserReport, Reporter, Reported)
+            .join(Reporter, UserReport.reporter_id == Reporter.id)
+            .join(Reported, UserReport.reported_user_id == Reported.id)
+            .order_by(UserReport.created_at.desc())
+        )
+        if status_filter:
+            stmt = stmt.where(UserReport.status == status_filter)
+
+        result = await self.db.execute(stmt)
+        return result.all()
+
+    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
+        result = await self.db.execute(
+            select(UserReport).where(UserReport.id == report_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_report_status(
+        self,
+        report: UserReport,
+        new_status: ReportStatus,
+    ) -> UserReport:
+        report.status = new_status
+        await self.db.flush()
+        return report
+
+    async def suspend_user(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        if user.role == Role.ADMIN:
+            return None
+
+        user.is_active = False
+        await self.db.flush()
+        return user

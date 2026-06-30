@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import Literal
 
 from app.models.provider_profile_model import VerificationLevel, VerificationStatus
+from app.models.user_model import Role
 from app.models.user_report_model import ReportStatus
 
 
@@ -54,7 +55,7 @@ class ReportListItem(BaseModel):
     report_id: UUID
     reporter_name: str
     reported_user_name: str
-    reported_user_role: str
+    reported_user_role: Role
     reason: str
     status: ReportStatus
     booking_id: UUID | None
@@ -65,6 +66,7 @@ class ReportListItem(BaseModel):
 
 class ReportActionSchema(BaseModel):
     status: ReportStatus
+    admin_internal_notes: str | None = None
 
 
 class ReportActionResponse(BaseModel):

@@ -137,3 +137,71 @@ class AdminService:
             logger.error(
                 f"Unexpected error in provider verification update by admin: {e}")
             raise
+
+    @staticmethod
+    async def get_reports(
+        db: AsyncSession,
+        # lang: str,
+        status_filter: str | None = None,
+    ) -> list[ReportListItem]:
+        repo = AdminRepository(db)
+        rows = await repo.get_reports(status_filter)
+        return [
+            ReportListItem(
+                report_id=report.id,
+                reporter_name=reporter.name_en,
+                reported_user_name=reported.name_en,
+                reported_user_role=reported.role.value,
+                reason=report.reason,
+                status=report.status.value,
+                booking_id=report.booking_id,
+                created_at=report.created_at,
+            )
+            for report, reporter, reported in rows
+        ]
+
+    @staticmethod
+    async def handle_report(
+        report_id: UUID,
+        data: ReportActionSchema,
+        db: AsyncSession,
+        lang: str,
+    ) -> ReportActionResponse:
+        admin_repo = AdminRepository(db)
+
+        report = await admin_repo.get_report_by_id(report_id)
+        if not report:
+            raise DomainValidationError(t("report_not_found", lang))
+
+        affected_user_id = None
+
+        if data.status == ReportStatus.ACTION_TAKEN:
+            # Suspend the reported user and mark report as ACTION_TAKEN
+            await admin_repo.suspend_user(report.reported_user_id)
+            affected_user_id = report.reported_user_id
+
+            # await admin_repo.update_report_status(report, ReportStatus.ACTION_TAKEN)
+            logger.info(
+                f"Admin suspended user {report.reported_user_id} "
+                f"via report {report_id}"
+            )
+        elif data.status == ReportStatus.REVIEWED:
+            if report.status == ReportStatus.ACTION_TAKEN:
+                raise DomainValidationError("can_not_dismiss_report")
+            # await admin_repo.update_report_status(report, ReportStatus.REVIEWED)
+            logger.info(f"Admin dismissed report {report_id}")
+        elif data.status == ReportStatus.UNDER_INVESTIGATION:
+            if report.status != ReportStatus.PENDING:
+                raise DomainValidationError("can_not_set_under_investigation")
+            logger.info(
+                f"Admin marked report {report_id} as under investigation"
+            )
+
+        await admin_repo.update_report_status(report, data.status)
+        await db.commit()
+
+        return ReportActionResponse(
+            report_id=report_id,
+            status=data.status,
+            affected_user_id=affected_user_id,
+        )

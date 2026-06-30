@@ -67,5 +67,39 @@ async def handle_verification(
         provider_id=provider_id,
         data=data,
         db=db,
-        lang="bn",
+        lang=lang,
+    )
+
+# ── Reports ────────────────────────────────────────────────────────────────────
+
+
+@router.get("/reports", response_model=list[ReportListItem])
+async def list_reports(
+    status: str | None = Query(
+        None, description="Filter: pending, reviewed, action_taken"),
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+    # lang: str = Depends(get_lang),
+):
+    return await AdminService.get_reports(db=db, status_filter=status)
+
+
+@router.patch("/reports/{report_id}", response_model=ReportActionResponse)
+async def handle_report(
+    report_id: UUID,
+    data: ReportActionSchema,
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    - action_taken  → suspends reported user
+    - reviewed → marks report REVIEWED. If already action_taken then can not set to REVIEWED
+    - under_investigation  → marks report from PENDING to UNDER_INVESTIGATION to investigate
+    """
+    return await AdminService.handle_report(
+        report_id=report_id,
+        data=data,
+        db=db,
+        lang=lang,
     )
