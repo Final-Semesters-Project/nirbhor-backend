@@ -80,13 +80,6 @@ class ProviderService:
         db: AsyncSession,
         update_data: ProviderProfileUpdateSchema
     ) -> dict:
-        # re-validate with language context so error messages are translated
-        # FIXME: enable this block if translations are not working
-        # data = ProviderProfileUpdateSchema.model_validate(
-        #     update_data.model_dump(),
-        #     context={"lang": lang}
-        # )
-
         provider_repo = ProviderRepository(db)
 
         # fetch the existing provider data
@@ -153,7 +146,13 @@ class ProviderService:
         await ProviderService._delete_old_image_if_changed(data_dict, "nid_back_public_id", provider_instance.nid_back_public_id)
 
         try:
-            await provider_repo.update(instance=provider_instance, **data_dict)
+            updated_provider = await provider_repo.update(instance=provider_instance, **data_dict)
+            # set_pending = False
+            # if updated_provider.nid_url_front is not None and updated_provider.nid_url_back is not None and updated_provider.photo_url is not None:
+            #     set_pending = True
+
+            await db.commit()
+
             return {
                 "message": t("profile_updated", lang)
             }

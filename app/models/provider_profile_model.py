@@ -15,9 +15,9 @@ class VerificationLevel(str, enum.Enum):
 
 
 class VerificationStatus(str, enum.Enum):
-    PENDING = "pending"
-    APPROVED = "approved"
-    REJECTED = "rejected"
+    PENDING = "pending"  # set automatically when provider uploads nid and Profile Picture
+    APPROVED = "approved"  # set manually by admin
+    REJECTED = "rejected"  # set manually by admin with reason
 
 
 class ProviderProfile(TimestampMixin, Base):

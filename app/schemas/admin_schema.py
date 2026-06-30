@@ -3,7 +3,7 @@ from uuid import UUID
 from datetime import datetime
 from typing import Literal
 
-from app.models.provider_profile_model import VerificationStatus
+from app.models.provider_profile_model import VerificationLevel, VerificationStatus
 from app.models.user_report_model import ReportStatus
 
 
@@ -43,8 +43,8 @@ class VerificationActionSchema(BaseModel):
 
 class VerificationActionResponse(BaseModel):
     user_id: UUID
-    verification_status: str
-    verification_level: str
+    verification_status: VerificationStatus
+    verification_level: VerificationLevel
     message: str
 
 

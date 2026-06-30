@@ -1,11 +1,12 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
 from app.models.user_model import User, Role
-from app.models.provider_profile_model import ProviderProfile, VerificationStatus
+from app.models.provider_profile_model import ProviderProfile, VerificationLevel, VerificationStatus
 from app.models.booking_model import Booking
 from app.models.user_report_model import UserReport, ReportStatus
 
@@ -81,3 +82,34 @@ class AdminRepository(BaseRepository):
             .order_by(ProviderProfile.updated_at.asc())   # oldest first
         )
         return result.all()
+
+    # async def get_provider_for_verification(
+    #     self,
+    #     provider_id: UUID
+    # ) -> tuple[User, ProviderProfile] | None:
+    #     result = await self.db.execute(
+    #         select(User, ProviderProfile)
+    #         .join(ProviderProfile, User.id == ProviderProfile.user_id)
+    #         .where(User.id == provider_id)
+    #     )
+    #     row = result.first()
+    #     if row is None:
+    #         return None
+    #     return (row[0], row[1])
+
+    async def approve_verification(self, provider_profile: ProviderProfile) -> ProviderProfile:
+        provider_profile.verification_status = VerificationStatus.APPROVED
+        provider_profile.verification_level = VerificationLevel.VERIFIED
+        provider_profile.verification_rejection_reason = None
+        await self.db.flush()
+        return provider_profile
+
+    async def reject_verification(
+        self,
+        provider_profile: ProviderProfile,
+        reason: str
+    ) -> ProviderProfile | None:
+        provider_profile.verification_status = VerificationStatus.REJECTED
+        provider_profile.verification_rejection_reason = reason
+        await self.db.flush()
+        return provider_profile

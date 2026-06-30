@@ -37,7 +37,7 @@ async def admin_dashboard(
 
 # ── Verifications ──────────────────────────────────────────────────────────────
 
-@router.get("/verifications", response_model=list[VerificationListItem])
+@router.get("/pendingVerifications", response_model=list[VerificationListItem])
 async def list_pending_verifications(
     current_user: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db_session),
@@ -45,3 +45,27 @@ async def list_pending_verifications(
 ):
     """List all providers with PENDING verification status, oldest first."""
     return await AdminService.get_pending_verifications(db=db, lang=lang)
+
+
+@router.patch(
+    "/verifications/{provider_id}",
+    response_model=VerificationActionResponse,
+)
+async def handle_verification(
+    provider_id: UUID,
+    data: VerificationActionSchema,
+    current_user: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Approve or reject a provider's verification request.
+    - approve → verification_level becomes VERIFIED, rejection_reason cleared
+    - reject  → rejection_reason required, provider stays BASIC
+    """
+    return await AdminService.handle_verification(
+        provider_id=provider_id,
+        data=data,
+        db=db,
+        lang="bn",
+    )

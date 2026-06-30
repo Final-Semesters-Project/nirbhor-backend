@@ -75,42 +75,6 @@ class AdminRepository:
 
     # ── Verifications ─────────────────────────────────────────────────────────
 
-    async def get_pending_verifications(self) -> list:
-        result = await self.db.execute(
-            select(User, ProviderProfile)
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
-            .order_by(ProviderProfile.updated_at.asc())   # oldest first
-        )
-        return result.all()
-
-    async def get_provider_for_verification(
-        self, provider_id: UUID
-    ) -> tuple | None:
-        result = await self.db.execute(
-            select(User, ProviderProfile)
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .where(User.id == provider_id)
-        )
-        return result.first()
-
-    async def approve_verification(self, provider_id: UUID) -> ProviderProfile:
-        profile = await self.db.get(ProviderProfile, provider_id)
-        profile.verification_status = VerificationStatus.APPROVED
-        profile.verification_level = VerificationLevel.VERIFIED
-        profile.verification_rejection_reason = None
-        await self.db.flush()
-        return profile
-
-    async def reject_verification(
-        self, provider_id: UUID, reason: str
-    ) -> ProviderProfile:
-        profile = await self.db.get(ProviderProfile, provider_id)
-        profile.verification_status = VerificationStatus.REJECTED
-        profile.verification_rejection_reason = reason
-        await self.db.flush()
-        return profile
-
     # ── Reports ───────────────────────────────────────────────────────────────
 
     async def get_reports(self, status_filter: str | None = None) -> list:
@@ -288,42 +252,6 @@ from app.core.i18n import t
 class AdminService:
 
     @staticmethod
-    async def handle_verification(
-        provider_id: UUID,
-        data: VerificationActionSchema,
-        db: AsyncSession,
-        lang: str,
-    ) -> VerificationActionResponse:
-        repo = AdminRepository(db)
-
-        row = await repo.get_provider_for_verification(provider_id)
-        if not row:
-            raise DomainValidationError(t("provider_not_found", lang))
-
-        if data.action == "approve":
-            profile = await repo.approve_verification(provider_id)
-            logger.info(f"Admin approved verification for provider {provider_id}")
-            # TODO: send FCM to provider — "Your account is now verified!"
-        else:
-            if not data.rejection_reason:
-                raise DomainValidationError(t("rejection_reason_required", lang))
-            profile = await repo.reject_verification(provider_id, data.rejection_reason)
-            logger.info(
-                f"Admin rejected verification for provider {provider_id}: "
-                f"{data.rejection_reason}"
-            )
-            # TODO: send FCM to provider — "Your verification was rejected: {reason}"
-
-        await db.commit()
-
-        return VerificationActionResponse(
-            user_id=provider_id,
-            verification_status=profile.verification_status.value,
-            verification_level=profile.verification_level.value,
-            message=t("verification_updated", lang),
-        )
-
-    @staticmethod
     async def get_reports(
         db: AsyncSession,
         lang: str,
@@ -466,29 +394,6 @@ class AdminService:
 ### `app/api/v1/admin.py` — new
 
 ```python
-
-@router.patch(
-    "/verifications/{provider_id}",
-    response_model=VerificationActionResponse,
-)
-async def handle_verification(
-    provider_id: UUID,
-    data: VerificationActionSchema,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Approve or reject a provider's verification request.
-    - approve → verification_level becomes VERIFIED, rejection_reason cleared
-    - reject  → rejection_reason required, provider stays BASIC
-    """
-    return await AdminService.handle_verification(
-        provider_id=provider_id,
-        data=data,
-        db=db,
-        lang=lang,
-    )
 
 
 # ── Reports ────────────────────────────────────────────────────────────────────
