@@ -1,1282 +1,877 @@
-# Domain 1: Bookings Management (/app/api/v1/bookings/)
-- Handles: Intent-to-Book Workflow.
-1. POST /api/v1/bookings/initiate
-- Trigger: Seeker clicks "Request to Call" on a provider's profile.
-- Logic:
-    - Count active INITIATED records for the calling seeker; reject if they are spamming multiple open numbers simultaneously.
+**Next batch (core app flows):**
+- `GET /api/v1/urgent/broadcast/{id}/status` — seeker polls to see if broadcast was claimed (or use FCM)
 
-    - Insert a row into bookings with status = BookingStatus.INITIATED and set call_unlocked_at = datetime.utcnow().
+**After that (admin panel):**
+- `GET /api/v1/admin/dashboard` — counts summary
+- `GET /api/v1/admin/verifications` — pending verification list
+- `PATCH /api/v1/admin/verifications/{provider_id}` — approve/reject
+- `GET /api/v1/admin/reports` — flagged profiles
+- `PATCH /api/v1/admin/reports/{report_id}` — dismiss/suspend
+- `GET /api/v1/admin/users` — user list with filters
+- `PATCH /api/v1/admin/users/{user_id}/toggle` — enable/disable account
+- `GET /api/v1/admin/analytics` — stats + graphs
 
-    - Response: Returns the raw phone number of the provider so the frontend can trigger the native system dialer.
-
-2. PATCH /api/v1/bookings/{booking_id}/respond
-- Trigger: Seeker responds to the 2-hour or 24-hour FCM notification prompt ("Did you end up hiring...?").
-Payload Schema: {"hired": bool, "work_schedule": datetime | None}
-- Logic:
-    - If hired == True: Update status directly to IN_PROGRESS (bypassing CONFIRMED as discussed) and save the explicit work_schedule. Automatically bump last_active_at for both users here to trigger Implied Activity tracking.
-
-    - If hired == False: Update status to CANCELLED.
-
-3. GET /api/v1/bookings/provider/me
-- Trigger: Provider opens their "Incoming Bookings" tab (matches your incoming_bookings.png UI mockup).
-- Logic: Query bookings table where provider_id == current_user.id AND status == BookingStatus.IN_PROGRESS. (This cleanly isolates and hides INITIATED records from their screen).
-
-4. GET /api/v1/bookings/seeker/me
-- Trigger: Seeker opens their booking history list.
-
-- Logic: Query all records matching seeker_id == current_user.id (including INITIATED entries so they can see past numbers they requested).
-
-
-# Domain 2: Location-Aware Search (/app/api/v1/search/)
-5. GET /api/v1/search/providers
-- Handles: Discovery & Search Requirements.
-- Query Parameters: `skill_category_id: int`, `seeker_lat: float`, `seeker_lng: float`, `search_radius_km: int | None = 1` 
-- Logic:
-    - Execute a PostGIS geospatial query matching providers whose `base_location` and defined `working_radius_km` overlap with the seeker's point coordinates.
-    - Filter out providers where `is_available == False` (off-duty toggles) or where `last_active_at` is older than 60 days.
-    - Apply your explicit Provider Ranking Score formula right inside the SQLAlchemy query selection using mathematical weights:
-        `score = (1/distance_km) + (rating * 2) + (verification_level * 3) + activity_bonus`
-    - Return localized `name_bn` or `name_en` fields dynamically by inspecting the Accept-Language header wrapper.
-
-# Domain 3: Emergency Broadcasts (/app/api/v1/urgent/)
-- Handles: Atomic multi-device Urgent Services ("Need It NOW") engine.
-6. POST /api/v1/urgent/broadcast
-- Trigger: Seeker requests an emergency asset dispatch.
-- Logic: 
-    - Insert an item into `urgent_broadcasts` with `status = BROADCASTING` and `expires_at = now() + 5 minutes`. Collect active target tokens within 3 KM with `has_smartphone == True` and trigger simultaneous high-priority FCM payloads.
-
-7. POST /api/v1/urgent/broadcast/{broadcast_id}/claim
-- Trigger: Fast-acting provider taps "Accept" on their screen.
-- Logic: Run an atomic database transaction with a pessimistic lock (with_for_update()) to prevent race conditions:
-    ```python
-        # Ensure only the fastest write wins
-        stmt = select(UrgentBroadcast).where(UrgentBroadcast.id == id).with_for_update()
-    ```
-    If status is still `BROADCASTING`, switch it to `CLAIMED` and set `claimed_by_provider_id`. If already claimed, raise a `409 Conflict` (or customized message) indicating the job was taken.
-
-# 🛠️ Infrastructure & Version Controls (/app/api/v1/config/)
-8. GET /api/v1/config/app-version
-- Trigger: App startup verification sequence.
-- Query Parameters: platform: str, current_version: str
-- Logic: Read your app_versions database metadata. If current_version falls strictly behind the minimum_required_version, notify the application wrapper to trigger a full structural hard-lock block screen.
-
-⏰ Background Automation Tasks (/app/jobs/)
-To keep your application code snappy, offload execution lifecycles to your embedded internal APScheduler tasks engine:
-
-The Midnight Expiry Clean (run_daily_at_midnight): Scan for any INITIATED rows remaining unconfirmed for more than 48 hours and switch them globally to AUTO_EXPIRED.
-
-The Urgent Expiry Sweeper (run_every_minute): Scan for entries remaining BROADCASTING where expires_at is past the current timestamp, flag them as EXPIRED, and push an FCM fallback error update back to the waiting seeker.
-
-The 15-Day Visibility Ping: Scan for providers with no interactive activity update records between 15 and 30 days old, and issue a free "Tap to Stay Visible" FCM notification card sequence to refresh their placement metrics safely.
-
-
-======================================== CODE ========================================
-
-# Nirbhor — Domains 1, 2, 3 Implementation
+# Nirbhor — Provider Public Profile, Broadcast Status, Admin APIs + FCM Setup
 
 ## File Map
 
 ```
 app/
 ├── schemas/
-│   ├── booking_schema.py
-│   ├── search_schema.py
-│   └── urgent_schema.py
+│   ├── provider_schema.py     ← add PublicProviderProfile response
+│   ├── admin_schema.py        ← new: all admin response schemas
+│   └── urgent_schema.py       ← add BroadcastStatusResponse
 ├── repositories/
-│   ├── booking_repository.py
-│   ├── search_repository.py
-│   └── urgent_repository.py
+│   ├── provider_repository.py ← add get_public_profile
+│   ├── admin_repository.py    ← new
+│   └── urgent_repository.py   ← add get_broadcast_status
 ├── services/
-│   ├── booking_service.py
-│   ├── search_service.py
-│   └── urgent_service.py
-└── api/v1/
-    ├── bookings.py
-    ├── search.py
-    └── urgent.py
+│   ├── provider_service.py    ← add get_public_profile
+│   ├── admin_service.py       ← new
+│   └── urgent_service.py      ← add get_broadcast_status
+├── api/v1/
+│   ├── providers.py           ← add GET /{provider_id}/public
+│   ├── admin.py               ← new
+│   └── urgent.py              ← add GET /{id}/status
+└── services/
+    └── notification_service.py ← FCM implementation
 ```
 
----
-
-## ⚙️ Setup Required Before Running
-
-### 1. Register the new routers in `app/api/v1/router.py`
-
-```python
-# app/api/v1/router.py
-from fastapi import APIRouter
-from app.api.v1 import auth, bookings, search, urgent  # add the three new ones
-
-api_router = APIRouter()
-api_router.include_router(auth.router, prefix="/auth", tags=["Auth"])
-api_router.include_router(bookings.router, prefix="/bookings", tags=["Bookings"])
-api_router.include_router(search.router, prefix="/search", tags=["Search"])
-api_router.include_router(urgent.router, prefix="/urgent", tags=["Urgent"])
-```
-
-### 2. Add a missing i18n key
-
-In `app/core/i18n.py`, add these keys to the MESSAGES dict:
-
-```python
-"booking_not_found":        {"en": "Booking not found.",                           "bn": "বুকিং পাওয়া যায়নি।"},
-"booking_wrong_status":     {"en": "This booking cannot be updated at this stage.", "bn": "এই বুকিং এখন আপডেট করা যাবে না।"},
-"booking_not_yours":        {"en": "You are not authorized to update this booking.","bn": "এই বুকিং আপডেট করার অনুমতি নেই।"},
-"too_many_open_bookings":   {"en": "You already have an open booking. Please resolve it first.", "bn": "আপনার একটি সক্রিয় বুকিং আছে। আগে সেটি সম্পন্ন করুন।"},
-"provider_unavailable":     {"en": "This provider is currently unavailable.",       "bn": "এই প্রোভাইডার এখন উপলব্ধ নেই।"},
-"broadcast_not_found":      {"en": "Broadcast not found or already expired.",       "bn": "ব্রডকাস্ট পাওয়া যায়নি বা মেয়াদ শেষ।"},
-"broadcast_already_claimed":{"en": "Sorry, another provider has already claimed this.", "bn": "দুঃখিত, অন্য একজন প্রোভাইডার আগেই এটি গ্রহণ করেছেন।"},
-"broadcast_created":        {"en": "Urgent broadcast sent. Waiting for a provider.","bn": "জরুরি অনুরোধ পাঠানো হয়েছে। প্রোভাইডারের জন্য অপেক্ষা করুন।"},
-"no_providers_found":       {"en": "No providers found in your area.",              "bn": "আপনার এলাকায় কোনো প্রোভাইডার পাওয়া যায়নি।"},
-"work_schedule_required":   {"en": "work_schedule is required when hired is true.", "bn": "কাজের সময়সূচি প্রদান করুন।"},
-```
-
-### 3. FCM (stub for now, real implementation later)
-
-The `NotificationService` below is a stub. Firebase Admin SDK setup is a
-separate task. For now the stubs log the intent without actually sending.
-
----
 
 ## 1. Schemas
 
-### `app/schemas/booking_schema.py`
+### `app/schemas/provider_schema.py` — add public profile response
 
-```python
-from pydantic import BaseModel, model_validator, field_validator
-from datetime import datetime
-from uuid import UUID
-from app.models.booking import BookingStatus
+### `app/schemas/urgent_schema.py` — add status response
 
-
-class BookingInitiateSchema(BaseModel):
-    """Seeker clicks 'Request to Call' on a provider profile."""
-    provider_id: UUID
-    skill_id: int
-    latitude: float
-    longitude: float
-
-
-class BookingRespondSchema(BaseModel):
-    """Seeker responds to the FCM follow-up notification."""
-    hired: bool
-    work_schedule: datetime | None = None
-
-    @model_validator(mode="after")
-    def work_schedule_required_if_hired(self) -> "BookingRespondSchema":
-        if self.hired and self.work_schedule is None:
-            raise ValueError("work_schedule is required when hired is true.")
-        return self
-
-    @field_validator("work_schedule")
-    @classmethod
-    def work_schedule_must_be_future(cls, v: datetime | None) -> datetime | None:
-        if v is not None and v <= datetime.utcnow():
-            raise ValueError("work_schedule must be a future date.")
-        return v
-
-
-# ── Response schemas ──────────────────────────────────────────────────────────
-
-class BookingInitiateResponse(BaseModel):
-    booking_id: UUID
-    provider_phone: str        # revealed only after initiation
-    provider_name: str
-    status: BookingStatus
-
-    model_config = {"from_attributes": True}
-
-
-class BookingListItem(BaseModel):
-    """Used for both seeker history and provider incoming list."""
-    booking_id: UUID
-    status: BookingStatus
-    skill_id: int
-    created_at: datetime
-    work_schedule: datetime | None
-    # seeker sees provider info; provider sees seeker info
-    other_party_name: str
-    other_party_phone: str | None  # None until INITIATED for seeker view
-
-    model_config = {"from_attributes": True}
-```
-
-### `app/schemas/search_schema.py`
-
-```python
-from pydantic import BaseModel, field_validator
-from uuid import UUID
-from datetime import datetime
-
-
-class ProviderSearchResult(BaseModel):
-    """One provider card returned from the search endpoint."""
-    user_id: UUID
-    name: str                       # localized (en or bn)
-    skill_names: list[str]          # localized skill names
-    verification_level: str
-    average_rating: float | None
-    distance_km: float
-    working_radius_km: int
-    has_smartphone: bool
-    is_available: bool
-    last_active_at: datetime | None
-    # phone is intentionally excluded — revealed only after booking initiation
-
-    model_config = {"from_attributes": True}
-```
-
-### `app/schemas/urgent_schema.py`
-
-```python
-from pydantic import BaseModel
-from uuid import UUID
-from datetime import datetime
-from app.models.urgent_broadcast import BroadcastStatus
-
-
-class UrgentBroadcastCreateSchema(BaseModel):
-    skill_id: int
-    latitude: float
-    longitude: float
-
-
-class UrgentBroadcastResponse(BaseModel):
-    broadcast_id: UUID
-    status: BroadcastStatus
-    expires_at: datetime
-    message: str
-
-    model_config = {"from_attributes": True}
-```
-
----
+### `app/schemas/admin_schema.py` — new
 
 ## 2. Repositories
 
-### `app/repositories/booking_repository.py`
+### `app/repositories/provider_repository.py` — add public profile fetch
+
+### `app/repositories/urgent_repository.py` — add status fetch
+
+### `app/repositories/admin_repository.py` — new
 
 ```python
 from uuid import UUID
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func
-from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
+from sqlalchemy import select, func, case, update
+from sqlalchemy.orm import aliased
 
+from app.models.user import User, Role
+from app.models.provider_profile import ProviderProfile, VerificationStatus, VerificationLevel
 from app.models.booking import Booking, BookingStatus
-from app.models.user import User
-from app.repositories.base import BaseRepository
+from app.models.user_report import UserReport, ReportStatus
 
 
-class BookingRepository(BaseRepository[Booking]):
-    def __init__(self, db: AsyncSession):
-        super().__init__(db, Booking)
-
-    async def count_active_initiated(self, seeker_id: UUID) -> int:
-        """Count how many INITIATED bookings this seeker currently has open."""
-        result = await self.db.execute(
-            select(func.count())
-            .where(Booking.seeker_id == seeker_id)
-            .where(Booking.status == BookingStatus.INITIATED)
-        )
-        return result.scalar_one()
-
-    async def create_booking(
-        self,
-        seeker_id: UUID,
-        provider_id: UUID,
-        skill_id: int,
-        latitude: float,
-        longitude: float,
-    ) -> Booking:
-        """Insert a new INITIATED booking with job_location set."""
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        booking = Booking(
-            seeker_id=seeker_id,
-            provider_id=provider_id,
-            skill_id=skill_id,
-            status=BookingStatus.INITIATED,
-            call_unlocked_at=datetime.utcnow(),
-            job_location=point,
-        )
-        self.db.add(booking)
-        await self.db.flush()  # get the generated ID without committing
-        return booking
-
-    async def get_by_id_with_parties(self, booking_id: UUID) -> Booking | None:
-        """
-        Load booking with seeker and provider eagerly joined.
-        We join User twice using aliased() to avoid ambiguity.
-        """
-        from sqlalchemy.orm import aliased
-        from sqlalchemy import select
-
-        SeekerUser = aliased(User, name="seeker_user")
-        ProviderUser = aliased(User, name="provider_user")
-
-        result = await self.db.execute(
-            select(Booking, SeekerUser, ProviderUser)
-            .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
-            .join(ProviderUser, Booking.provider_id == ProviderUser.id)
-            .where(Booking.id == booking_id)
-        )
-        row = result.first()
-        if not row:
-            return None
-        booking, seeker, provider = row
-        # Attach for easy access in service layer
-        booking._seeker = seeker
-        booking._provider = provider
-        return booking
-
-    async def get_provider_incoming(self, provider_id: UUID) -> list[Booking]:
-        """Bookings where this provider has active work (IN_PROGRESS only)."""
-        result = await self.db.execute(
-            select(Booking)
-            .where(Booking.provider_id == provider_id)
-            .where(Booking.status == BookingStatus.IN_PROGRESS)
-            .order_by(Booking.confirmed_at.desc())
-        )
-        return list(result.scalars().all())
-
-    async def get_seeker_history(self, seeker_id: UUID) -> list[Booking]:
-        """All bookings for this seeker, newest first."""
-        result = await self.db.execute(
-            select(Booking)
-            .where(Booking.seeker_id == seeker_id)
-            .order_by(Booking.created_at.desc())
-        )
-        return list(result.scalars().all())
-```
-
-### `app/repositories/search_repository.py`
-
-```python
-from uuid import UUID
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case, text
-from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID, ST_Distance
-
-from app.models.user import User
-from app.models.provider_profile import ProviderProfile, VerificationLevel
-from app.models.skill import Skill
-from app.models.provider_skill_link import ProviderSkillLink
-
-
-class SearchRepository:
+class AdminRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
 
-    async def find_providers(
-        self,
-        skill_category_id: int,
-        seeker_lat: float,
-        seeker_lng: float,
-        search_radius_km: int,
-    ) -> list[dict]:
-        """
-        Core geospatial search with inline ranking score.
+    # ── Dashboard ─────────────────────────────────────────────────────────────
 
-        Score formula (from spec):
-            score = (1/distance_km)
-                  + (average_rating * 2)
-                  + verification_bonus   [TRUSTED=+5, VERIFIED=+3, else 0]
-                  + activity_bonus       [0-3d=+10, 4-15d=+5, 16-30d=-30, 31-60d=-60]
-                  + (recent_booking_count * 0.5)
+    # ── Verifications ─────────────────────────────────────────────────────────
 
-        Filters:
-            - provider must have a skill in the requested category
-            - provider base_location must be within search_radius_km of seeker
-            - is_available must be True
-            - last_active_at must not be older than 60 days
-        """
-        now = datetime.utcnow()
-        seeker_point = ST_SetSRID(ST_MakePoint(seeker_lng, seeker_lat), 4326)
+    # ── Reports ───────────────────────────────────────────────────────────────
 
-        # Convert KM to meters for ST_DWithin (geography uses meters)
-        radius_m = search_radius_km * 1000
-
-        # ── Activity bonus/penalty as a CASE expression ───────────────────────
-        days_inactive = func.extract(
-            "epoch",
-            now - User.last_active_at
-        ) / 86400  # convert seconds to days
-
-        activity_score = case(
-            (days_inactive <= 3,  10.0),
-            (days_inactive <= 15,  5.0),
-            (days_inactive <= 30, -30.0),
-            (days_inactive <= 60, -60.0),
-            else_=-60.0,  # fallback (shouldn't reach here due to WHERE filter)
-        )
-
-        # ── Verification bonus ────────────────────────────────────────────────
-        verification_score = case(
-            (ProviderProfile.verification_level == VerificationLevel.TRUSTED,  5.0),
-            (ProviderProfile.verification_level == VerificationLevel.VERIFIED, 3.0),
-            else_=0.0,
-        )
-
-        # ── Distance in KM from seeker to provider base_location ─────────────
-        # ST_Distance with geography=True returns meters
-        distance_m = ST_Distance(
-            ProviderProfile.base_location.cast(text("geography")),
-            seeker_point.cast(text("geography")),
-        )
-        distance_km = distance_m / 1000.0
-
-        # ── Recent booking count (last 30 days) ───────────────────────────────
-        # Subquery: how many completed bookings has this provider had?
-        from app.models.booking import Booking, BookingStatus
-        recent_bookings_sq = (
-            select(func.count())
-            .where(Booking.provider_id == ProviderProfile.user_id)
-            .where(Booking.status == BookingStatus.COMPLETED)
-            .where(Booking.completed_at >= now - timedelta(days=30))
-            .correlate(ProviderProfile)
-            .scalar_subquery()
-        )
-
-        # ── Composite ranking score ───────────────────────────────────────────
-        ranking_score = (
-            (1.0 / func.nullif(distance_km, 0))
-            + (func.coalesce(ProviderProfile.average_rating, 0.0) * 2.0)
-            + verification_score
-            + activity_score
-            + (recent_bookings_sq * 0.5)
-        )
+    async def get_reports(self, status_filter: str | None = None) -> list:
+        Reporter = aliased(User, name="reporter")
+        Reported = aliased(User, name="reported")
 
         stmt = (
-            select(
-                User.id.label("user_id"),
-                User.last_active_at,
-                ProviderProfile.working_radius_km,
-                ProviderProfile.verification_level,
-                ProviderProfile.average_rating,
-                ProviderProfile.has_smartphone,
-                ProviderProfile.is_available,
-                distance_km.label("distance_km"),
-                ranking_score.label("score"),
-            )
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .join(ProviderSkillLink, ProviderProfile.user_id == ProviderSkillLink.provider_id)
-            .join(Skill, ProviderSkillLink.skill_id == Skill.id)
-            # ── Filters ───────────────────────────────────────────────────────
-            .where(Skill.category_id == skill_category_id)
-            .where(ProviderProfile.is_available == True)
-            .where(User.is_active == True)
-            # provider working radius must overlap seeker location
-            .where(
-                ST_DWithin(
-                    ProviderProfile.base_location.cast(text("geography")),
-                    seeker_point.cast(text("geography")),
-                    radius_m,
-                )
-            )
-            # exclude 60+ day inactive providers entirely
-            .where(
-                User.last_active_at >= now - timedelta(days=60)
-            )
-            .distinct(User.id)
-            .order_by(ranking_score.desc())
+            select(UserReport, Reporter, Reported)
+            .join(Reporter, UserReport.reporter_id == Reporter.id)
+            .join(Reported, UserReport.reported_user_id == Reported.id)
+            .order_by(UserReport.created_at.desc())
         )
+        if status_filter:
+            stmt = stmt.where(UserReport.status == status_filter)
 
         result = await self.db.execute(stmt)
-        return [dict(row._mapping) for row in result.all()]
+        return result.all()
 
-    async def get_provider_skill_names(
-        self, provider_ids: list[UUID], category_id: int, lang: str
-    ) -> dict[UUID, list[str]]:
-        """
-        Fetch skill names for a list of providers in one query.
-        Returns {provider_id: [skill_name, ...]}
-        """
-        if not provider_ids:
-            return {}
-
-        name_col = Skill.name_bn if lang == "bn" else Skill.name_en
-
+    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
         result = await self.db.execute(
-            select(ProviderSkillLink.provider_id, name_col.label("skill_name"))
-            .join(Skill, ProviderSkillLink.skill_id == Skill.id)
-            .where(ProviderSkillLink.provider_id.in_(provider_ids))
-            .where(Skill.category_id == category_id)
+            select(UserReport).where(UserReport.id == report_id)
         )
+        return result.scalar_one_or_none()
 
-        skills_map: dict[UUID, list[str]] = {}
-        for row in result.all():
-            skills_map.setdefault(row.provider_id, []).append(row.skill_name)
-        return skills_map
-
-    async def get_provider_names(
-        self, provider_ids: list[UUID], lang: str
-    ) -> dict[UUID, str]:
-        """
-        Fetch display names for providers. Falls back to name_en if name_bn is NULL.
-        Users table stores name_en/name_bn directly.
-        """
-        if not provider_ids:
-            return {}
-
-        # Use COALESCE to fall back to English if Bangla is null
-        if lang == "bn":
-            name_col = func.coalesce(User.name_bn, User.name_en).label("name")
-        else:
-            name_col = User.name_en.label("name")
-
-        result = await self.db.execute(
-            select(User.id, name_col)
-            .where(User.id.in_(provider_ids))
-        )
-        return {row.id: row.name for row in result.all()}
-```
-
-### `app/repositories/urgent_repository.py`
-
-```python
-from uuid import UUID
-from datetime import datetime, timedelta
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
-from sqlalchemy import text
-
-from app.models.urgent_broadcast import UrgentBroadcast, BroadcastStatus
-from app.models.provider_profile import ProviderProfile
-from app.models.fcm_token import FCMToken
-from app.repositories.base import BaseRepository
-
-
-class UrgentRepository(BaseRepository[UrgentBroadcast]):
-    def __init__(self, db: AsyncSession):
-        super().__init__(db, UrgentBroadcast)
-
-    async def create_broadcast(
+    async def update_report_status(
         self,
-        seeker_id: UUID,
-        skill_id: int,
-        latitude: float,
-        longitude: float,
-    ) -> UrgentBroadcast:
-        point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        broadcast = UrgentBroadcast(
-            seeker_id=seeker_id,
-            skill_id=skill_id,
-            location=point,
-            status=BroadcastStatus.BROADCASTING,
-            expires_at=datetime.utcnow() + timedelta(minutes=5),
-        )
-        self.db.add(broadcast)
+        report_id: UUID,
+        new_status: ReportStatus,
+    ) -> UserReport:
+        report = await self.db.get(UserReport, report_id)
+        report.status = new_status
         await self.db.flush()
-        return broadcast
+        return report
 
-    async def get_nearby_fcm_tokens(
+    async def suspend_user(self, user_id: UUID) -> User:
+        user = await self.db.get(User, user_id)
+        user.is_active = False
+        await self.db.flush()
+        return user
+
+    # ── Users ─────────────────────────────────────────────────────────────────
+
+    async def get_users(
         self,
-        latitude: float,
-        longitude: float,
-        radius_km: int = 3,
-    ) -> list[str]:
-        """
-        Find FCM tokens for providers within radius_km who have smartphones.
-        Returns list of token strings for batch FCM send.
-        """
-        seeker_point = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
-        radius_m = radius_km * 1000
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> list[User]:
+        stmt = select(User).order_by(User.created_at.desc())
+        if role_filter:
+            stmt = stmt.where(User.role == role_filter)
+        if is_active_filter is not None:
+            stmt = stmt.where(User.is_active == is_active_filter)
+        result = await self.db.execute(stmt)
+        return list(result.scalars().all())
 
-        result = await self.db.execute(
-            select(FCMToken.token)
-            .join(ProviderProfile, FCMToken.user_id == ProviderProfile.user_id)
-            .where(ProviderProfile.has_smartphone == True)
-            .where(ProviderProfile.is_available == True)
-            .where(
-                ST_DWithin(
-                    ProviderProfile.base_location.cast(text("geography")),
-                    seeker_point.cast(text("geography")),
-                    radius_m,
-                )
-            )
-        )
-        return [row.token for row in result.all()]
-
-    async def claim_broadcast(
-        self,
-        broadcast_id: UUID,
-        provider_id: UUID,
-    ) -> UrgentBroadcast | None:
-        """
-        Atomic claim with pessimistic lock.
-        Returns the broadcast if successfully claimed, None if already taken.
-        """
-        # with_for_update() locks the row until this transaction commits
-        result = await self.db.execute(
-            select(UrgentBroadcast)
-            .where(UrgentBroadcast.id == broadcast_id)
-            .with_for_update()
-        )
-        broadcast = result.scalar_one_or_none()
-
-        if not broadcast:
+    async def get_user_detail(self, user_id: UUID) -> dict | None:
+        user = await self.db.get(User, user_id)
+        if not user:
             return None
 
-        if broadcast.status != BroadcastStatus.BROADCASTING:
-            # Already claimed or expired — return the broadcast so the service
-            # can produce the right error message
-            return broadcast
+        total_bookings = await self.db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(
+                (Booking.seeker_id == user_id) | (Booking.provider_id == user_id)
+            )
+        )
 
-        broadcast.status = BroadcastStatus.CLAIMED
-        broadcast.claimed_by_provider_id = provider_id
+        profile = None
+        if user.role == Role.PROVIDER:
+            profile = await self.db.get(ProviderProfile, user_id)
+
+        return {
+            "user": user,
+            "total_bookings": total_bookings or 0,
+            "profile": profile,
+        }
+
+    async def toggle_user_active(self, user_id: UUID) -> User:
+        user = await self.db.get(User, user_id)
+        user.is_active = not user.is_active
         await self.db.flush()
-        return broadcast
+        return user
+
+    # ── Analytics ─────────────────────────────────────────────────────────────
+
+    async def get_analytics(self) -> dict:
+        now = datetime.now(timezone.utc)
+
+        total_users = await self.db.scalar(select(func.count()).select_from(User))
+        total_bookings = await self.db.scalar(select(func.count()).select_from(Booking))
+        avg_rating = await self.db.scalar(
+            select(func.avg(ProviderProfile.average_rating))
+            .where(ProviderProfile.average_rating.is_not(None))
+        )
+        seeker_count = await self.db.scalar(
+            select(func.count()).select_from(User).where(User.role == Role.SEEKER)
+        )
+        provider_count = await self.db.scalar(
+            select(func.count()).select_from(User).where(User.role == Role.PROVIDER)
+        )
+        active_providers = await self.db.scalar(
+            select(func.count())
+            .select_from(User)
+            .where(User.role == Role.PROVIDER)
+            .where(User.last_active_at >= now - timedelta(days=30))
+        )
+
+        # Bookings per week for last 8 weeks
+        # DATE_TRUNC groups timestamps into week buckets
+        from sqlalchemy import text
+        weekly_result = await self.db.execute(
+            select(
+                func.date_trunc("week", Booking.created_at).label("week_start"),
+                func.count().label("count"),
+            )
+            .where(Booking.created_at >= now - timedelta(weeks=8))
+            .group_by(text("week_start"))
+            .order_by(text("week_start"))
+        )
+        bookings_per_week = [
+            {"week_start": r.week_start, "count": r.count}
+            for r in weekly_result.all()
+        ]
+
+        seeker_count = seeker_count or 0
+        provider_count = provider_count or 0
+        ratio = round(seeker_count / provider_count, 2) if provider_count > 0 else None
+
+        return {
+            "total_users": total_users or 0,
+            "total_bookings": total_bookings or 0,
+            "average_provider_rating": round(float(avg_rating), 2) if avg_rating else None,
+            "active_providers_count": active_providers or 0,
+            "seeker_count": seeker_count,
+            "provider_count": provider_count,
+            "seeker_to_provider_ratio": ratio,
+            "bookings_per_week": bookings_per_week,
+        }
 ```
 
 ---
 
 ## 3. Services
 
-### `app/services/booking_service.py`
+### `app/services/provider_service.py` — add public profile
+
+### `app/services/urgent_service.py` — add broadcast status
+
+### `app/services/admin_service.py` — new
 
 ```python
 from uuid import UUID
-from datetime import datetime
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 
-from app.models.booking import BookingStatus
-from app.models.provider_profile import ProviderProfile
-from app.repositories.booking_repository import BookingRepository
-from app.repositories.user_repository import UserRepository
-from app.schemas.booking_schema import (
-    BookingInitiateSchema,
-    BookingRespondSchema,
-    BookingInitiateResponse,
-    BookingListItem,
+from app.repositories.admin_repository import AdminRepository
+from app.schemas.admin_schema import (
+    AdminDashboardResponse,
+    VerificationListItem,
+    VerificationActionSchema,
+    VerificationActionResponse,
+    ReportListItem,
+    ReportActionSchema,
+    ReportActionResponse,
+    AdminUserListItem,
+    AdminUserDetail,
+    AdminAnalyticsResponse,
 )
-from app.core.exceptions import DomainIntegrityError, DomainValidationError
+from app.models.user_report import ReportStatus
+from app.core.exceptions import DomainValidationError, DomainIntegrityError
 from app.core.i18n import t
 
-# Business rule: max 1 open (INITIATED) booking at a time per seeker
-MAX_OPEN_BOOKINGS = 1
 
-
-class BookingService:
+class AdminService:
 
     @staticmethod
-    async def initiate_booking(
-        data: BookingInitiateSchema,
-        seeker_id: UUID,
+    async def get_reports(
         db: AsyncSession,
         lang: str,
-    ) -> BookingInitiateResponse:
-
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-
-        # 1. Spam guard: seeker must not have another open booking
-        open_count = await booking_repo.count_active_initiated(seeker_id)
-        if open_count >= MAX_OPEN_BOOKINGS:
-            raise DomainIntegrityError(t("too_many_open_bookings", lang))
-
-        # 2. Provider must exist and be available
-        provider = await user_repo.get_by_id(data.provider_id)
-        if not provider or not provider.is_active:
-            raise DomainValidationError(t("provider_unavailable", lang))
-
-        provider_profile = await db.get(ProviderProfile, data.provider_id)
-        if not provider_profile or not provider_profile.is_available:
-            raise DomainValidationError(t("provider_unavailable", lang))
-
-        # 3. Create the booking
-        booking = await booking_repo.create_booking(
-            seeker_id=seeker_id,
-            provider_id=data.provider_id,
-            skill_id=data.skill_id,
-            latitude=data.latitude,
-            longitude=data.longitude,
-        )
-
-        await db.commit()
-
-        logger.info(f"Booking initiated: {booking.id} by seeker {seeker_id}")
-
-        # 4. Schedule the FCM follow-up notification (stub — implement with APScheduler)
-        # NotificationService.schedule_booking_followup(booking.id, delay_hours=2)
-
-        return BookingInitiateResponse(
-            booking_id=booking.id,
-            provider_phone=provider.phone_en,   # revealed here
-            provider_name=provider.name_en,
-            status=booking.status,
-        )
-
-    @staticmethod
-    async def respond_to_booking(
-        booking_id: UUID,
-        data: BookingRespondSchema,
-        seeker_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> dict:
-        """
-        Seeker confirms or cancels a booking from the FCM notification.
-        hired=True  → status becomes IN_PROGRESS, confirmed_at is set
-        hired=False → status becomes CANCELLED
-        """
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-
-        booking = await booking_repo.get_by_id_with_parties(booking_id)
-
-        if not booking:
-            raise DomainValidationError(t("booking_not_found", lang))
-
-        # Only the seeker who created this booking can respond
-        if booking.seeker_id != seeker_id:
-            raise DomainValidationError(t("booking_not_yours", lang))
-
-        # Can only respond to INITIATED bookings
-        if booking.status != BookingStatus.INITIATED:
-            raise DomainValidationError(t("booking_wrong_status", lang))
-
-        if data.hired:
-            booking.status = BookingStatus.IN_PROGRESS
-            booking.confirmed_at = datetime.utcnow()
-            booking.work_schedule = data.work_schedule
-
-            # Implied Activity: bump last_active_at for both parties
-            now = datetime.utcnow()
-            await user_repo.update_last_active(booking.seeker_id, now)
-            await user_repo.update_last_active(booking.provider_id, now)
-
-            logger.info(f"Booking {booking_id} → IN_PROGRESS by seeker {seeker_id}")
-        else:
-            booking.status = BookingStatus.CANCELLED
-            logger.info(f"Booking {booking_id} → CANCELLED by seeker {seeker_id}")
-
-        await db.commit()
-        return {"booking_id": booking_id, "status": booking.status}
-
-    @staticmethod
-    async def get_provider_incoming(
-        provider_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> list[BookingListItem]:
-        """Provider's 'Incoming Bookings' tab — only IN_PROGRESS."""
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-        bookings = await booking_repo.get_provider_incoming(provider_id)
-
-        result = []
-        for b in bookings:
-            seeker = await user_repo.get_by_id(b.seeker_id)
-            result.append(BookingListItem(
-                booking_id=b.id,
-                status=b.status,
-                skill_id=b.skill_id,
-                created_at=b.created_at,
-                work_schedule=b.work_schedule,
-                other_party_name=seeker.name_en if seeker else "—",
-                other_party_phone=seeker.phone_en if seeker else None,
-            ))
-        return result
-
-    @staticmethod
-    async def get_seeker_history(
-        seeker_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> list[BookingListItem]:
-        """Seeker's full booking history including INITIATED entries."""
-        booking_repo = BookingRepository(db)
-        user_repo = UserRepository(db)
-        bookings = await booking_repo.get_seeker_history(seeker_id)
-
-        result = []
-        for b in bookings:
-            provider = await user_repo.get_by_id(b.provider_id)
-            # Phone only revealed if booking was ever initiated (always is, but
-            # keep this explicit for future status expansions)
-            phone = provider.phone_en if provider else None
-            result.append(BookingListItem(
-                booking_id=b.id,
-                status=b.status,
-                skill_id=b.skill_id,
-                created_at=b.created_at,
-                work_schedule=b.work_schedule,
-                other_party_name=provider.name_en if provider else "—",
-                other_party_phone=phone,
-            ))
-        return result
-```
-
-### `app/services/search_service.py`
-
-```python
-from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
-
-from app.repositories.search_repository import SearchRepository
-from app.schemas.search_schema import ProviderSearchResult
-from app.core.i18n import t
-
-# If no results found within requested radius, auto-expand once to this
-AUTO_EXPAND_KM = 2
-
-
-class SearchService:
-
-    @staticmethod
-    async def find_providers(
-        skill_category_id: int,
-        seeker_lat: float,
-        seeker_lng: float,
-        search_radius_km: int,
-        db: AsyncSession,
-        lang: str,
-    ) -> dict:
-        """
-        Search for providers. If none found in requested radius,
-        automatically expands to AUTO_EXPAND_KM and returns a warning flag.
-        """
-        search_repo = SearchRepository(db)
-
-        rows = await search_repo.find_providers(
-            skill_category_id=skill_category_id,
-            seeker_lat=seeker_lat,
-            seeker_lng=seeker_lng,
-            search_radius_km=search_radius_km,
-        )
-
-        expanded = False
-        if not rows and search_radius_km < AUTO_EXPAND_KM:
-            # Auto-expand once silently
-            rows = await search_repo.find_providers(
-                skill_category_id=skill_category_id,
-                seeker_lat=seeker_lat,
-                seeker_lng=seeker_lng,
-                search_radius_km=AUTO_EXPAND_KM,
+        status_filter: str | None = None,
+    ) -> list[ReportListItem]:
+        repo = AdminRepository(db)
+        rows = await repo.get_reports(status_filter)
+        return [
+            ReportListItem(
+                report_id=report.id,
+                reporter_name=reporter.name_en,
+                reported_user_name=reported.name_en,
+                reported_user_role=reported.role.value,
+                reason=report.reason,
+                status=report.status.value,
+                booking_id=report.booking_id,
+                created_at=report.created_at,
             )
-            expanded = True
-            logger.info(
-                f"Search auto-expanded from {search_radius_km}km to {AUTO_EXPAND_KM}km "
-                f"for category {skill_category_id}"
-            )
-
-        if not rows:
-            return {
-                "providers": [],
-                "expanded_radius": expanded,
-                "warning": t("no_providers_found", lang) if not rows else None,
-            }
-
-        provider_ids = [r["user_id"] for r in rows]
-
-        # Batch-fetch names and skills in 2 queries (not N queries)
-        names = await search_repo.get_provider_names(provider_ids, lang)
-        skills_map = await search_repo.get_provider_skill_names(
-            provider_ids, skill_category_id, lang
-        )
-
-        providers = [
-            ProviderSearchResult(
-                user_id=r["user_id"],
-                name=names.get(r["user_id"], "—"),
-                skill_names=skills_map.get(r["user_id"], []),
-                verification_level=r["verification_level"].value,
-                average_rating=r["average_rating"],
-                distance_km=round(r["distance_km"], 2),
-                working_radius_km=r["working_radius_km"],
-                has_smartphone=r["has_smartphone"],
-                is_available=r["is_available"],
-                last_active_at=r["last_active_at"],
-            )
-            for r in rows
+            for report, reporter, reported in rows
         ]
 
-        return {
-            "providers": providers,
-            "expanded_radius": expanded,
-            "warning": (
-                t("search_radius_expanded_warning", lang) if expanded else None
-            ),
-        }
-```
-
-### `app/services/urgent_service.py`
-
-```python
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
-
-from app.models.urgent_broadcast import BroadcastStatus
-from app.repositories.urgent_repository import UrgentRepository
-from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastResponse
-from app.core.exceptions import DomainIntegrityError, DomainValidationError
-from app.core.i18n import t
-
-
-class UrgentService:
-
     @staticmethod
-    async def create_broadcast(
-        data: UrgentBroadcastCreateSchema,
-        seeker_id: UUID,
+    async def handle_report(
+        report_id: UUID,
+        data: ReportActionSchema,
         db: AsyncSession,
         lang: str,
-    ) -> UrgentBroadcastResponse:
+    ) -> ReportActionResponse:
+        repo = AdminRepository(db)
 
-        urgent_repo = UrgentRepository(db)
+        report = await repo.get_report_by_id(report_id)
+        if not report:
+            raise DomainValidationError(t("report_not_found", lang))
 
-        # 1. Create the broadcast row
-        broadcast = await urgent_repo.create_broadcast(
-            seeker_id=seeker_id,
-            skill_id=data.skill_id,
-            latitude=data.latitude,
-            longitude=data.longitude,
-        )
+        affected_user_id = None
 
-        # 2. Find nearby provider FCM tokens (within 3 KM, has_smartphone=True)
-        tokens = await urgent_repo.get_nearby_fcm_tokens(
-            latitude=data.latitude,
-            longitude=data.longitude,
-            radius_km=3,
-        )
-
-        await db.commit()
-
-        # 3. Fire FCM to all nearby providers simultaneously (stub)
-        if tokens:
+        if data.action == "suspend":
+            # Suspend the reported user and mark report as ACTION_TAKEN
+            await repo.suspend_user(report.reported_user_id)
+            await repo.update_report_status(report_id, ReportStatus.ACTION_TAKEN)
+            affected_user_id = report.reported_user_id
             logger.info(
-                f"Urgent broadcast {broadcast.id}: sending FCM to {len(tokens)} providers"
+                f"Admin suspended user {report.reported_user_id} "
+                f"via report {report_id}"
             )
-            # TODO: await NotificationService.send_urgent_broadcast(tokens, broadcast.id, skill_id)
-        else:
-            logger.warning(
-                f"Urgent broadcast {broadcast.id}: no nearby smartphone providers found"
-            )
-
-        return UrgentBroadcastResponse(
-            broadcast_id=broadcast.id,
-            status=broadcast.status,
-            expires_at=broadcast.expires_at,
-            message=t("broadcast_created", lang),
-        )
-
-    @staticmethod
-    async def claim_broadcast(
-        broadcast_id: UUID,
-        provider_id: UUID,
-        db: AsyncSession,
-        lang: str,
-    ) -> dict:
-        """
-        Atomic claim — only the first provider to hit this wins.
-        Uses with_for_update() pessimistic lock in the repository.
-        """
-        urgent_repo = UrgentRepository(db)
-
-        broadcast = await urgent_repo.claim_broadcast(broadcast_id, provider_id)
-
-        if not broadcast:
-            raise DomainValidationError(t("broadcast_not_found", lang))
-
-        # If broadcast was already claimed or expired by the time we locked it
-        if broadcast.status == BroadcastStatus.CLAIMED:
-            if broadcast.claimed_by_provider_id == provider_id:
-                # This provider already claimed it (duplicate tap) — idempotent OK
-                await db.commit()
-                return {"broadcast_id": broadcast_id, "status": "CLAIMED", "yours": True}
-            # Another provider claimed it first
-            raise DomainIntegrityError(t("broadcast_already_claimed", lang))
-
-        if broadcast.status == BroadcastStatus.EXPIRED:
-            raise DomainValidationError(t("broadcast_not_found", lang))
+        elif data.action == "dismiss":
+            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
+            logger.info(f"Admin dismissed report {report_id}")
+        elif data.action == "reviewed":
+            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
 
         await db.commit()
 
-        logger.info(f"Broadcast {broadcast_id} claimed by provider {provider_id}")
+        return ReportActionResponse(
+            report_id=report_id,
+            status=data.action,
+            affected_user_id=affected_user_id,
+        )
 
-        # TODO: Notify seeker that provider is on the way
-        # await NotificationService.send_broadcast_claimed(broadcast.seeker_id, provider_id)
+    @staticmethod
+    async def get_users(
+        db: AsyncSession,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> list[AdminUserListItem]:
+        repo = AdminRepository(db)
+        users = await repo.get_users(role_filter, is_active_filter)
+        return [
+            AdminUserListItem(
+                user_id=u.id,
+                name=u.name_en,
+                phone=u.phone_en,
+                role=u.role.value,
+                is_active=u.is_active,
+                last_active_at=u.last_active_at,
+                created_at=u.created_at,
+            )
+            for u in users
+        ]
 
+    @staticmethod
+    async def get_user_detail(
+        user_id: UUID, db: AsyncSession, lang: str
+    ) -> AdminUserDetail:
+        repo = AdminRepository(db)
+        data = await repo.get_user_detail(user_id)
+        if not data:
+            raise DomainValidationError(t("user_not_found", lang))
+
+        u = data["user"]
+        profile = data["profile"]
+
+        return AdminUserDetail(
+            user_id=u.id,
+            name=u.name_en,
+            phone=u.phone_en,
+            role=u.role.value,
+            is_active=u.is_active,
+            last_active_at=u.last_active_at,
+            created_at=u.created_at,
+            total_bookings=data["total_bookings"],
+            average_rating=profile.average_rating if profile else None,
+            verification_level=profile.verification_level.value if profile else None,
+            verification_status=profile.verification_status.value if profile else None,
+        )
+
+    @staticmethod
+    async def toggle_user_active(
+        user_id: UUID, db: AsyncSession, lang: str
+    ) -> dict:
+        repo = AdminRepository(db)
+        user = await repo.toggle_user_active(user_id)
+        if not user:
+            raise DomainValidationError(t("user_not_found", lang))
+        await db.commit()
+        logger.info(
+            f"Admin toggled user {user_id} is_active → {user.is_active}"
+        )
         return {
-            "broadcast_id": broadcast_id,
-            "status": "CLAIMED",
-            "yours": True,
+            "user_id": user_id,
+            "is_active": user.is_active,
+            "message": t("user_status_updated", lang),
         }
+
+    @staticmethod
+    async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
+        repo = AdminRepository(db)
+        data = await repo.get_analytics()
+        return AdminAnalyticsResponse(**data)
 ```
 
 ---
 
 ## 4. Routers
 
-### `app/api/v1/bookings.py`
+### `app/api/v1/providers.py` — add public profile endpoint
+
+### `app/api/v1/urgent.py` — add status endpoint
+
+### `app/api/v1/admin.py` — new
 
 ```python
-from uuid import UUID
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.session import get_db
-from app.core.i18n import get_lang
-from app.core.security import get_current_user
-from app.models.user import User, Role
-from app.schemas.booking_schema import (
-    BookingInitiateSchema,
-    BookingRespondSchema,
-    BookingInitiateResponse,
-    BookingListItem,
-)
-from app.services.booking_service import BookingService
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
-
-router = APIRouter()
 
 
-@router.post("/initiate", response_model=BookingInitiateResponse, status_code=201)
-async def initiate_booking(
-    data: BookingInitiateSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+# ── Reports ────────────────────────────────────────────────────────────────────
+
+@router.get("/reports", response_model=list[ReportListItem])
+async def list_reports(
+    status: str | None = Query(None, description="Filter: PENDING, REVIEWED, ACTION_TAKEN"),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    """Seeker clicks 'Request to Call'. Creates booking, reveals provider phone."""
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.initiate_booking(
-        data=data,
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
+    return await AdminService.get_reports(db=db, lang=lang, status_filter=status)
 
 
-@router.patch("/{booking_id}/respond", status_code=200)
-async def respond_to_booking(
-    booking_id: UUID,
-    data: BookingRespondSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+@router.patch("/reports/{report_id}", response_model=ReportActionResponse)
+async def handle_report(
+    report_id: UUID,
+    data: ReportActionSchema,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
     """
-    Seeker responds to the FCM follow-up.
-    hired=true  → IN_PROGRESS + work_schedule required
-    hired=false → CANCELLED
+    - dismiss  → marks report REVIEWED, no action on reported user
+    - reviewed → marks report REVIEWED
+    - suspend  → marks report ACTION_TAKEN + sets reported user is_active=False
     """
-    return await BookingService.respond_to_booking(
-        booking_id=booking_id,
+    return await AdminService.handle_report(
+        report_id=report_id,
         data=data,
-        seeker_id=current_user.id,
         db=db,
         lang=lang,
     )
 
 
-@router.get("/provider/me", response_model=list[BookingListItem])
-async def provider_incoming_bookings(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+# ── Users ──────────────────────────────────────────────────────────────────────
+
+@router.get("/users", response_model=list[AdminUserListItem])
+async def list_users(
+    role: str | None = Query(None, description="Filter: SEEKER, PROVIDER, ADMIN"),
+    is_active: bool | None = Query(None, description="Filter by active status"),
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+):
+    return await AdminService.get_users(
+        db=db, role_filter=role, is_active_filter=is_active
+    )
+
+
+@router.get("/users/{user_id}", response_model=AdminUserDetail)
+async def get_user_detail(
+    user_id: UUID,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    """Provider's 'Incoming Bookings' tab — shows only IN_PROGRESS bookings."""
-    if current_user.role != Role.PROVIDER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.get_provider_incoming(
-        provider_id=current_user.id,
-        db=db,
-        lang=lang,
+    return await AdminService.get_user_detail(
+        user_id=user_id, db=db, lang=lang
     )
 
 
-@router.get("/seeker/me", response_model=list[BookingListItem])
-async def seeker_booking_history(
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
+@router.patch("/users/{user_id}/toggle", status_code=200)
+async def toggle_user_active(
+    user_id: UUID,
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    """Seeker's full booking history including open INITIATED entries."""
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await BookingService.get_seeker_history(
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
+    """Enable or disable a user account. Toggles current is_active value."""
+    return await AdminService.toggle_user_active(
+        user_id=user_id, db=db, lang=lang
     )
+
+
+# ── Analytics ──────────────────────────────────────────────────────────────────
+
+@router.get("/analytics", response_model=AdminAnalyticsResponse)
+async def get_analytics(
+    _: User = Depends(require_admin),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Stats for admin dashboard — totals, ratios, weekly booking graph data."""
+    return await AdminService.get_analytics(db=db)
 ```
 
-### `app/api/v1/search.py`
+### Register in `app/api/v1/router.py`
 
 ```python
-from fastapi import APIRouter, Depends, Query
-from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.v1 import admin
 
-from app.db.session import get_db
-from app.core.i18n import get_lang
-from app.core.security import get_current_user
-from app.models.user import User
-from app.services.search_service import SearchService
-
-router = APIRouter()
-
-
-@router.get("/providers")
-async def search_providers(
-    skill_category_id: int = Query(..., description="Category ID to search within"),
-    seeker_lat: float = Query(..., description="Seeker's current latitude"),
-    seeker_lng: float = Query(..., description="Seeker's current longitude"),
-    search_radius_km: int = Query(1, ge=1, le=50, description="Search radius in KM"),
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """
-    Geo-aware provider search with ranking score.
-    Auto-expands to 2km if no results found within requested radius.
-    Phone numbers are never included in search results.
-    """
-    return await SearchService.find_providers(
-        skill_category_id=skill_category_id,
-        seeker_lat=seeker_lat,
-        seeker_lng=seeker_lng,
-        search_radius_km=search_radius_km,
-        db=db,
-        lang=lang,
-    )
-```
-
-### `app/api/v1/urgent.py`
-
-```python
-from uuid import UUID
-from fastapi import APIRouter, Depends
-from sqlalchemy.ext.asyncio import AsyncSession
-
-from app.db.session import get_db
-from app.core.i18n import get_lang
-from app.core.security import get_current_user
-from app.models.user import User, Role
-from app.schemas.urgent_schema import UrgentBroadcastCreateSchema, UrgentBroadcastResponse
-from app.services.urgent_service import UrgentService
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
-
-router = APIRouter()
-
-
-@router.post("/broadcast", response_model=UrgentBroadcastResponse, status_code=201)
-async def create_urgent_broadcast(
-    data: UrgentBroadcastCreateSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """
-    Seeker triggers 'Need It NOW'.
-    Creates broadcast row + fires FCM to all nearby providers with smartphones.
-    Expires in 5 minutes if no one claims.
-    """
-    if current_user.role != Role.SEEKER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await UrgentService.create_broadcast(
-        data=data,
-        seeker_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-
-
-@router.post("/broadcast/{broadcast_id}/claim", status_code=200)
-async def claim_urgent_broadcast(
-    broadcast_id: UUID,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db),
-    lang: str = Depends(get_lang),
-):
-    """
-    Provider taps 'Accept'. Atomic pessimistic lock ensures only one wins.
-    409 if another provider already claimed it.
-    """
-    if current_user.role != Role.PROVIDER:
-        raise DomainValidationError(t("booking_not_yours", lang))
-
-    return await UrgentService.claim_broadcast(
-        broadcast_id=broadcast_id,
-        provider_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
+api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
 ```
 
 ---
 
-## 5. One Method to Add to `UserRepository`
+## 5. FCM Setup — Firebase Admin SDK
 
-You need this for Implied Activity tracking in `booking_service.py`:
+### Why Admin SDK (not the REST API directly)?
+
+Firebase Admin SDK handles token management, retry logic, and batch sending
+automatically. The REST API requires you to manage OAuth tokens yourself.
+Admin SDK is the correct approach.
+
+### Step 1: Get your `serviceAccountKey.json`
+
+1. Go to https://console.firebase.google.com
+2. Create a new project (name it "nirbhor" or similar)
+3. Go to **Project Settings** (gear icon) → **Service Accounts** tab
+4. Click **"Generate new private key"** → confirms → downloads a JSON file
+5. Rename it to `serviceAccountKey.json`
+6. **Never commit this file to git.** Add to `.gitignore` immediately:
+   ```
+   serviceAccountKey.json
+   ```
+
+### Step 2: Store the key securely
+
+For local development: place the file at the project root and reference it
+via an env variable. For Render.com production: paste the JSON content as an
+environment variable (not a file).
 
 ```python
-# In app/repositories/user_repository.py — add this method
-
-async def update_last_active(self, user_id: UUID, timestamp: datetime) -> None:
-    """Directly update last_active_at for a user. Used by Implied Activity."""
-    from sqlalchemy import update
-    await self.db.execute(
-        update(User)
-        .where(User.id == user_id)
-        .values(last_active_at=timestamp)
-    )
-    # no flush needed — will be committed by the calling service
+# app/core/config.py — add these settings
+FIREBASE_CREDENTIALS_PATH: str = "serviceAccountKey.json"
+# OR for production (JSON string in env var):
+FIREBASE_CREDENTIALS_JSON: str | None = None
 ```
 
----
+### Step 3: Install the SDK
 
-## 6. Important Notes
+```bash
+pip install firebase-admin
+```
 
-### `booking/provider/me` route ordering conflict
+Add to `requirements.txt`:
+```
+firebase-admin==6.5.0
+```
 
-FastAPI matches routes top-to-bottom. The route `GET /bookings/provider/me`
-will conflict with `GET /bookings/{booking_id}` if you add that later.
-**Always register the static route (`/provider/me`) before any dynamic
-route (`/{booking_id}`) in the same router.**
+### Step 4: Initialize Firebase once at startup
 
-The current file already does this correctly.
+```python
+# app/core/firebase.py
 
-### Search query: `ST_DWithin` vs `ST_Distance`
+import json
+import firebase_admin
+from firebase_admin import credentials, messaging
+from loguru import logger
 
-- `ST_DWithin` is used for the **filter** (fast, uses spatial index).
-- `ST_Distance` is used for the **distance label** in the SELECT (for display).
+from app.core.config import settings
 
-Never use `ST_Distance` in the WHERE clause — it calculates distance for
-every row and ignores the spatial index. This is already correct in the code.
 
-### The `with_for_update()` claim race condition
+def init_firebase() -> None:
+    """
+    Initialize Firebase Admin SDK once at app startup.
+    Supports both file path (local dev) and JSON string (Render production).
+    """
+    if firebase_admin._apps:
+        return  # already initialized
 
-The `claim_broadcast` repo method locks the row with `SELECT ... FOR UPDATE`.
-This means if two providers tap "Accept" at the exact same millisecond, one
-transaction will wait for the other to finish before reading the status.
-The second one will then see `status = CLAIMED` and get the 409 error.
-This is the correct behavior.
+    try:
+        if settings.FIREBASE_CREDENTIALS_JSON:
+            # Production: JSON string stored in environment variable
+            cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
+            cred = credentials.Certificate(cred_dict)
+        else:
+            # Local development: JSON file on disk
+            cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
 
-### Flutter vs Web: location permissions
+        firebase_admin.initialize_app(cred)
+        logger.info("Firebase Admin SDK initialized successfully")
+    except Exception as e:
+        logger.error(f"Firebase initialization failed: {e}")
+        raise
 
-**Flutter:** Use the `geolocator` package.
+
+# Call in main.py lifespan:
+# from app.core.firebase import init_firebase
+# init_firebase()
+```
+
+### Step 5: The NotificationService
+
+```python
+# app/services/notification_service.py
+
+from uuid import UUID
+from firebase_admin import messaging
+from loguru import logger
+
+
+class NotificationService:
+
+    @staticmethod
+    async def send_urgent_broadcast(
+        tokens: list[str],
+        broadcast_id: UUID,
+        skill_name: str,
+    ) -> None:
+        """
+        Send high-priority FCM to all nearby providers simultaneously.
+        Uses MulticastMessage for batch delivery (up to 500 tokens per call).
+        """
+        if not tokens:
+            return
+
+        message = messaging.MulticastMessage(
+            tokens=tokens,
+            data={
+                # 'data' payload (not 'notification') so Flutter/React can handle
+                # it even when app is backgrounded, and extract broadcast_id
+                "type": "URGENT_BROADCAST",
+                "broadcast_id": str(broadcast_id),
+                "skill_name": skill_name,
+            },
+            notification=messaging.Notification(
+                title=f"জরুরি কাজ! / Urgent Job!",
+                body=f"আপনার কাছে কেউ {skill_name} চাইছেন। / Someone needs {skill_name} urgently.",
+            ),
+            android=messaging.AndroidConfig(priority="high"),
+            apns=messaging.APNSConfig(
+                headers={"apns-priority": "10"}
+            ),
+        )
+
+        try:
+            response = messaging.send_each_for_multicast(message)
+            logger.info(
+                f"Urgent broadcast FCM: {response.success_count} sent, "
+                f"{response.failure_count} failed out of {len(tokens)} tokens"
+            )
+        except Exception as e:
+            # FCM failure must never crash the booking flow
+            logger.error(f"FCM urgent broadcast failed: {e}")
+
+    @staticmethod
+    async def send_booking_followup(
+        seeker_fcm_token: str,
+        booking_id: UUID,
+        provider_name: str,
+        attempt: int,
+    ) -> None:
+        """2-hour and 24-hour follow-up: 'Did you hire [provider]?'"""
+        if not seeker_fcm_token:
+            return
+
+        message = messaging.Message(
+            token=seeker_fcm_token,
+            data={
+                "type": "BOOKING_FOLLOWUP",
+                "booking_id": str(booking_id),
+                "attempt": str(attempt),
+            },
+            notification=messaging.Notification(
+                title="বুকিং আপডেট / Booking Update",
+                body=f"আপনি কি {provider_name} কে নিয়োগ করেছেন? / Did you hire {provider_name}?",
+            ),
+        )
+
+        try:
+            messaging.send(message)
+            logger.info(
+                f"Booking followup FCM sent: booking={booking_id} attempt={attempt}"
+            )
+        except Exception as e:
+            logger.error(f"FCM booking followup failed: {e}")
+
+    @staticmethod
+    async def send_completion_prompt(
+        seeker_fcm_token: str,
+        booking_id: UUID,
+        provider_name: str,
+    ) -> None:
+        """'Your job with [provider] should be done. Tap to review!'"""
+        if not seeker_fcm_token:
+            return
+
+        message = messaging.Message(
+            token=seeker_fcm_token,
+            data={
+                "type": "COMPLETION_PROMPT",
+                "booking_id": str(booking_id),
+            },
+            notification=messaging.Notification(
+                title="কাজ সম্পন্ন? / Job Done?",
+                body=f"{provider_name} এর সাথে আপনার কাজ শেষ হয়ে থাকলে রিভিউ দিন।",
+            ),
+        )
+
+        try:
+            messaging.send(message)
+        except Exception as e:
+            logger.error(f"FCM completion prompt failed: {e}")
+
+    @staticmethod
+    async def send_broadcast_expired(seeker_fcm_token: str) -> None:
+        """'No one responded. Please try a manual search.'"""
+        if not seeker_fcm_token:
+            return
+
+        message = messaging.Message(
+            token=seeker_fcm_token,
+            data={"type": "BROADCAST_EXPIRED"},
+            notification=messaging.Notification(
+                title="কোনো সাড়া নেই / No Response",
+                body="কেউ সাড়া দেননি। ম্যানুয়াল অনুসন্ধান করুন। / No one responded. Try manual search.",
+            ),
+        )
+
+        try:
+            messaging.send(message)
+        except Exception as e:
+            logger.error(f"FCM broadcast expired notification failed: {e}")
+
+    @staticmethod
+    async def send_broadcast_claimed(
+        seeker_fcm_token: str,
+        provider_name: str,
+    ) -> None:
+        """Notify seeker that a provider accepted their urgent request."""
+        if not seeker_fcm_token:
+            return
+
+        message = messaging.Message(
+            token=seeker_fcm_token,
+            data={"type": "BROADCAST_CLAIMED", "provider_name": provider_name},
+            notification=messaging.Notification(
+                title="প্রোভাইডার পাওয়া গেছে! / Provider Found!",
+                body=f"{provider_name} আপনার অনুরোধ গ্রহণ করেছেন। / {provider_name} accepted your request.",
+            ),
+        )
+
+        try:
+            messaging.send(message)
+        except Exception as e:
+            logger.error(f"FCM broadcast claimed notification failed: {e}")
+
+    @staticmethod
+    async def send_verification_approved(provider_fcm_token: str) -> None:
+        message = messaging.Message(
+            token=provider_fcm_token,
+            data={"type": "VERIFICATION_APPROVED"},
+            notification=messaging.Notification(
+                title="যাচাইকরণ সম্পন্ন! / Verified!",
+                body="আপনার অ্যাকাউন্ট যাচাই হয়েছে। এখন আপনি ব্লু টিক পাবেন।",
+            ),
+        )
+        try:
+            messaging.send(message)
+        except Exception as e:
+            logger.error(f"FCM verification approved failed: {e}")
+```
+
+### Step 6: Wire FCM into main.py lifespan
+
+```python
+# app/main.py — in lifespan, before yield
+
+from app.core.firebase import init_firebase
+init_firebase()
+```
+
+### Step 7: Getting FCM tokens from Flutter/React
+
+Flutter (provider/seeker mobile app):
 ```dart
-Position position = await Geolocator.getCurrentPosition();
-// Send position.latitude and position.longitude with search request
+// In Flutter — add firebase_messaging package
+// pubspec.yaml: firebase_messaging: ^14.x.x
+
+final fcmToken = await FirebaseMessaging.instance.getToken();
+// Send this token to your backend after login:
+// POST /api/v1/fcm/token  { "token": fcmToken, "device_type": "ANDROID" }
 ```
 
-**React (Web):** Use the browser Geolocation API.
-```javascript
-navigator.geolocation.getCurrentPosition((pos) => {
-  const { latitude, longitude } = pos.coords;
-  // Include in search query params
-});
+You already have an `fcm_tokens` table. You need one small endpoint to
+receive and store tokens:
+
+```python
+# Add to app/api/v1/auth.py or a new fcm.py router
+
+@router.post("/fcm/token", status_code=201)
+async def register_fcm_token(
+    token: str,
+    device_type: str,   # ANDROID, IOS, WEB
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Called by Flutter/React after login to register the device FCM token."""
+    from app.models.fcm_token import FCMToken
+    from sqlalchemy.dialects.postgresql import insert
+
+    # Upsert — avoid duplicates if same token registered twice
+    stmt = insert(FCMToken).values(
+        user_id=current_user.id,
+        token=token,
+        device_type=device_type,
+    ).on_conflict_do_nothing()
+
+    await db.execute(stmt)
+    await db.commit()
+    return {"registered": True}
 ```
-Both send the coordinates as query params to `GET /api/v1/search/providers`.
+
+---
+
+## What's Left After This
+
+**Done after this batch:**
+- All seeker flows ✓
+- All provider flows ✓
+- All admin flows ✓
+- FCM infrastructure ✓
+
+**Remaining before submission:**
+
+1. **Wire FCM into job stubs** — replace `# TODO` comments in
+   `booking_jobs.py` and `urgent_jobs.py` with actual
+   `NotificationService` calls. You need to fetch the user's FCM token
+   from `fcm_tokens` table before calling each notification method.
+
+2. **Alembic migration** — run `alembic revision --autogenerate` to pick up
+   any model changes, then `alembic upgrade head`.
+
+3. **Test the admin endpoints** — create an admin user directly in the DB
+   (seed script) since there's no admin registration endpoint by design.
+
+4. **Render + NeonDB deployment** — set `FIREBASE_CREDENTIALS_JSON` as an
+   env var on Render (paste the full JSON content, not the file path).
+   Set `SCHEDULER_ENABLED=true` on only one Render worker instance to
+   prevent duplicate job runs.
+
+5. **AI review summarization** — the weekly cron job that batches reviews
+   and calls an AI model to generate `ai_review_summary_en/bn` on
+   `provider_profiles`. This is a nice-to-have for the capstone demo.
+
+
+
+Handle FCM token for multiple user but single device:
+1. On logout — delete the token for that user+device combination:
+```python
+# Add to auth_service.py logout method (which you haven't built yet)
+async def logout(user_id: UUID, fcm_token: str, db: AsyncSession):
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.user_id == user_id)
+        .where(FCMToken.token == fcm_token)
+    )
+    # also invalidate the refresh token / session
+    await db.commit()
+```
+
+2. On login/register — remove the token from any OTHER user first, then upsert for current user:
+```python
+# POST /fcm/token endpoint logic
+
+async def register_fcm_token(
+    user_id: UUID,
+    token: str,
+    device_type: str,
+    db: AsyncSession,
+):
+    # Step 1: Remove this token from any other user who might have it
+    # (handles the "shared device, switched account" case)
+    await db.execute(
+        delete(FCMToken)
+        .where(FCMToken.token == token)
+        .where(FCMToken.user_id != user_id)
+    )
+
+    # Step 2: Upsert for current user
+    # If token already exists for this user, do nothing (same person re-logging in)
+    stmt = insert(FCMToken).values(
+        user_id=user_id,
+        token=token,
+        device_type=device_type,
+    ).on_conflict_do_nothing(index_elements=["token"])
+    # Requires unique constraint on token column in your DB
+
+    await db.execute(stmt)
+    await db.commit()
+```

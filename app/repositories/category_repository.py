@@ -1,7 +1,10 @@
+from typing import Sequence
+
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import select, or_
 from app.models.category_model import Category
+from app.models.skill_model import Skill
 
 
 class CategoryRepository(BaseRepository[Category]):
@@ -27,3 +30,9 @@ class CategoryRepository(BaseRepository[Category]):
             )
         )
         return result.scalars().first()
+
+    async def get_all_categories(self) -> Sequence[Category]:
+        result = await self.db.execute(
+            select(Category).order_by(Category.id)
+        )
+        return result.scalars().all()

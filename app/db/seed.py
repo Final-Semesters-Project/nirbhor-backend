@@ -3,6 +3,8 @@ from sqlalchemy import select
 from app.models.category_model import Category
 from app.models.skill_model import Skill
 from loguru import logger
+from app.core.security import Security
+from app.models.user_model import Role, User
 
 
 async def seed_categories_and_skills(db: AsyncSession) -> None:
@@ -74,3 +76,21 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
 
     await db.commit()
     print("✅ Seed data inserted successfully")
+
+
+async def create_admin_user(db: AsyncSession) -> None:
+    existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
+    if existing.scalar_one_or_none():
+        logger.info("Admin already seeded. Skipping...")
+        return
+    admin = User(
+        phone_en="01700000000",
+        password_hash=Security.hash_password("admin123"),
+        role=Role.ADMIN,
+        name_en="Admin",
+        name_bn="অ্যাডমিন",
+        is_active=True,
+    )
+    db.add(admin)
+    await db.commit()
+    print("✅ Admin user created successfully")

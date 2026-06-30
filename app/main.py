@@ -1,11 +1,11 @@
-from fastapi.responses import JSONResponse
+from loguru import logger
 from app.api.v1.router import api_router
-from fastapi import FastAPI, Request, status
+from fastapi import FastAPI
 from app.core.config import settings
-from app.core.exceptions import DomainIntegrityError, register_exception_handlers
+from app.core.exceptions import register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
-from app.db.seed import seed_categories_and_skills
+from app.db.seed import seed_categories_and_skills, create_admin_user
 from app.db.session import AsyncSessionLocal
 
 app_kwargs = {}
@@ -18,8 +18,33 @@ async def lifespan(app: FastAPI):
     setup_logging()
     async with AsyncSessionLocal() as db:
         await seed_categories_and_skills(db)
-    yield
+        await create_admin_user(db)
+
+    from apscheduler.schedulers.asyncio import AsyncIOScheduler
+    from app.jobs.booking_jobs import send_booking_followup_notifications, expire_stale_bookings, send_completion_prompts, auto_complete_stale_bookings
+    from app.jobs.urgent_jobs import expire_stale_broadcasts
+
+    scheduler = AsyncIOScheduler()
+    scheduler.add_job(
+        send_booking_followup_notifications,
+        "interval", minutes=5
+    )
+    scheduler.add_job(expire_stale_broadcasts, "interval", minutes=1)
+    scheduler.add_job(send_completion_prompts, "interval", hours=1)
+
+    scheduler.add_job(expire_stale_bookings, "cron", hour=0, minute=0)
+    scheduler.add_job(
+        auto_complete_stale_bookings,
+        "cron", hour=1, minute=0
+    )  # nightly
+
+    scheduler.start()
+    logger.info("APScheduler started successfully inside lifespan startup.")
+
     # runs on shutdown, after all requests
+    yield
+    logger.info("Shutting down APScheduler..")
+    scheduler.shutdown()
 
 
 # check if in production or development

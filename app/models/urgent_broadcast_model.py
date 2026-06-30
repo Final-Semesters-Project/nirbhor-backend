@@ -4,9 +4,9 @@ from app.db.base import Base
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
 from datetime import datetime
-from sqlalchemy import DateTime, ForeignKey, Enum as sqlEnum, String
+from sqlalchemy import DateTime, ForeignKey, Enum as sqlEnum, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from geoalchemy2 import Geometry
+from geoalchemy2 import Geometry, WKBElement
 
 
 class BroadcastStatus(str, enum.Enum):
@@ -23,6 +23,7 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
     seeker_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
+        index=True,
     )
 
     seeker: Mapped["User"] = relationship(  # type: ignore
@@ -38,7 +39,7 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
     skill: Mapped["Skill"] = relationship(uselist=False)  # type: ignore
 
     # PostGIS point — seeker's location at time of request
-    location: Mapped[object] = mapped_column(
+    location: Mapped[WKBElement] = mapped_column(
         Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
         nullable=False,
     )
@@ -70,4 +71,13 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
     expires_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
         nullable=False,
+    )
+
+    __table_args__ = (
+        Index(
+            "ix_urgent_broadcasts_status_expires",
+            "status", "expires_at",
+            # <-- Compiles to SQL WHERE status = 'BROADCASTING'
+            postgresql_where=(status == "BROADCASTING")
+        ),
     )

@@ -8,3 +8,10 @@ class CategoryBaseSchema(BaseModel):
 
 class CategoryCreateSchema(CategoryBaseSchema):
     pass
+
+
+class CategoryResponse(BaseModel):
+    id: int
+    name: str   # localized
+
+    model_config = ConfigDict(from_attributes=True)
