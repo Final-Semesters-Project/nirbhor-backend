@@ -160,3 +160,50 @@ class AdminRepository(BaseRepository):
         user.is_active = False
         await self.db.flush()
         return user
+
+    async def get_users(
+        self,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> Sequence[User]:
+        stmt = select(User).order_by(User.created_at.desc())
+        if role_filter:
+            stmt = stmt.where(User.role == role_filter)
+        if is_active_filter is not None:
+            stmt = stmt.where(User.is_active == is_active_filter)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_detail(self, user_id: UUID) -> dict | None:
+        user = await self.db.get(User, user_id)
+        if not user:
+            return None
+
+        total_bookings = await self.db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(
+                (Booking.seeker_id == user_id) | (
+                    Booking.provider_id == user_id)
+            )
+        )
+
+        profile = None
+        if user.role == Role.PROVIDER:
+            profile = await self.db.get(ProviderProfile, user_id)
+
+        return {
+            "user": user,
+            "total_bookings": total_bookings or 0,
+            "profile": profile,
+        }
+
+    async def toggle_user_active(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        user.is_active = not user.is_active
+        await self.db.flush()
+        return user

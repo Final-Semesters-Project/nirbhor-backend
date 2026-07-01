@@ -66,48 +66,6 @@ class AdminRepository:
 
     # ── Users ─────────────────────────────────────────────────────────────────
 
-    async def get_users(
-        self,
-        role_filter: str | None = None,
-        is_active_filter: bool | None = None,
-    ) -> list[User]:
-        stmt = select(User).order_by(User.created_at.desc())
-        if role_filter:
-            stmt = stmt.where(User.role == role_filter)
-        if is_active_filter is not None:
-            stmt = stmt.where(User.is_active == is_active_filter)
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def get_user_detail(self, user_id: UUID) -> dict | None:
-        user = await self.db.get(User, user_id)
-        if not user:
-            return None
-
-        total_bookings = await self.db.scalar(
-            select(func.count())
-            .select_from(Booking)
-            .where(
-                (Booking.seeker_id == user_id) | (Booking.provider_id == user_id)
-            )
-        )
-
-        profile = None
-        if user.role == Role.PROVIDER:
-            profile = await self.db.get(ProviderProfile, user_id)
-
-        return {
-            "user": user,
-            "total_bookings": total_bookings or 0,
-            "profile": profile,
-        }
-
-    async def toggle_user_active(self, user_id: UUID) -> User:
-        user = await self.db.get(User, user_id)
-        user.is_active = not user.is_active
-        await self.db.flush()
-        return user
-
     # ── Analytics ─────────────────────────────────────────────────────────────
 
     async def get_analytics(self) -> dict:
@@ -179,71 +137,6 @@ class AdminRepository:
 
 class AdminService:
     @staticmethod
-    async def get_users(
-        db: AsyncSession,
-        role_filter: str | None = None,
-        is_active_filter: bool | None = None,
-    ) -> list[AdminUserListItem]:
-        repo = AdminRepository(db)
-        users = await repo.get_users(role_filter, is_active_filter)
-        return [
-            AdminUserListItem(
-                user_id=u.id,
-                name=u.name_en,
-                phone=u.phone_en,
-                role=u.role.value,
-                is_active=u.is_active,
-                last_active_at=u.last_active_at,
-                created_at=u.created_at,
-            )
-            for u in users
-        ]
-
-    @staticmethod
-    async def get_user_detail(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> AdminUserDetail:
-        repo = AdminRepository(db)
-        data = await repo.get_user_detail(user_id)
-        if not data:
-            raise DomainValidationError(t("user_not_found", lang))
-
-        u = data["user"]
-        profile = data["profile"]
-
-        return AdminUserDetail(
-            user_id=u.id,
-            name=u.name_en,
-            phone=u.phone_en,
-            role=u.role.value,
-            is_active=u.is_active,
-            last_active_at=u.last_active_at,
-            created_at=u.created_at,
-            total_bookings=data["total_bookings"],
-            average_rating=profile.average_rating if profile else None,
-            verification_level=profile.verification_level.value if profile else None,
-            verification_status=profile.verification_status.value if profile else None,
-        )
-
-    @staticmethod
-    async def toggle_user_active(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> dict:
-        repo = AdminRepository(db)
-        user = await repo.toggle_user_active(user_id)
-        if not user:
-            raise DomainValidationError(t("user_not_found", lang))
-        await db.commit()
-        logger.info(
-            f"Admin toggled user {user_id} is_active → {user.is_active}"
-        )
-        return {
-            "user_id": user_id,
-            "is_active": user.is_active,
-            "message": t("user_status_updated", lang),
-        }
-
-    @staticmethod
     async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
         repo = AdminRepository(db)
         data = await repo.get_analytics()
@@ -265,65 +158,9 @@ class AdminService:
 
 # ── Reports ────────────────────────────────────────────────────────────────────
 
-
-@router.patch("/reports/{report_id}", response_model=ReportActionResponse)
-async def handle_report(
-    report_id: UUID,
-    data: ReportActionSchema,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    - dismiss  → marks report REVIEWED, no action on reported user
-    - reviewed → marks report REVIEWED
-    - suspend  → marks report ACTION_TAKEN + sets reported user is_active=False
-    """
-    return await AdminService.handle_report(
-        report_id=report_id,
-        data=data,
-        db=db,
-        lang=lang,
-    )
-
-
 # ── Users ──────────────────────────────────────────────────────────────────────
 
-@router.get("/users", response_model=list[AdminUserListItem])
-async def list_users(
-    role: str | None = Query(None, description="Filter: SEEKER, PROVIDER, ADMIN"),
-    is_active: bool | None = Query(None, description="Filter by active status"),
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-):
-    return await AdminService.get_users(
-        db=db, role_filter=role, is_active_filter=is_active
-    )
 
-
-@router.get("/users/{user_id}", response_model=AdminUserDetail)
-async def get_user_detail(
-    user_id: UUID,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    return await AdminService.get_user_detail(
-        user_id=user_id, db=db, lang=lang
-    )
-
-
-@router.patch("/users/{user_id}/toggle", status_code=200)
-async def toggle_user_active(
-    user_id: UUID,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """Enable or disable a user account. Toggles current is_active value."""
-    return await AdminService.toggle_user_active(
-        user_id=user_id, db=db, lang=lang
-    )
 
 
 # ── Analytics ──────────────────────────────────────────────────────────────────
@@ -732,4 +569,115 @@ async def register_fcm_token(
 
     await db.execute(stmt)
     await db.commit()
+``` 
+
+# =============================== LOGOUT ==================================
+```python
+# app/schemas/auth_schema.py
+
+from pydantic import BaseModel
+
+class LogoutSchema(BaseModel):
+    refresh_token: str
+    fcm_token: str | None = None   # optional: also clear this device's FCM token
 ```
+
+```python
+# app/repositories/user_repository.py — add this method
+
+async def delete_session_by_refresh_token(self, refresh_token: str) -> bool:
+    """Deletes the session row matching this refresh token. Returns True if found."""
+    from sqlalchemy import delete
+    result = await self.db.execute(
+        delete(UserSession)
+        .where(UserSession.refresh_token == refresh_token)
+        .returning(UserSession.id)
+    )
+    return result.first() is not None
+```
+
+```python
+# app/services/auth_service.py
+
+@staticmethod
+async def logout(
+    data: LogoutSchema,
+    access_token: str,
+    user_id: UUID,
+    db: AsyncSession,
+    lang: str,
+) -> dict:
+    user_repo = UserRepository(db)
+
+    # 1. Delete the refresh token session row — this is the durable logout
+    deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
+    if not deleted:
+        # Not fatal — token might already be gone (e.g. double logout tap)
+        logger.warning(f"Logout: refresh token not found for user {user_id}")
+
+    # 2. Blocklist the current access token until it naturally expires
+    # Access tokens are short-lived (1hr), so the TTL cache entry only
+    # needs to live until the token's own expiry — no need to track forever.
+    from app.core.security import decode_access_token
+    from app.core.cache import ttl_cache  # your Redis/TTL cache client
+
+    payload = decode_access_token(access_token)
+    remaining_seconds = max(0, payload["exp"] - int(datetime.now(timezone.utc).timestamp()))
+    if remaining_seconds > 0:
+        await ttl_cache.set(
+            key=f"blocklist:{access_token}",
+            value="1",
+            ttl_seconds=remaining_seconds,
+        )
+
+    # 3. Optionally remove this device's FCM token so a stale session
+    # can't receive notifications meant for whoever logs in next
+    if data.fcm_token:
+        from sqlalchemy import delete
+        from app.models.fcm_token import FCMToken
+        await db.execute(
+            delete(FCMToken)
+            .where(FCMToken.user_id == user_id)
+            .where(FCMToken.token == data.fcm_token)
+        )
+
+    await db.commit()
+    logger.info(f"User {user_id} logged out")
+
+    return {"message": t("logout_successful", lang)}
+```
+
+```python
+# app/api/v1/auth.py
+
+@router.post("/logout", status_code=200)
+async def logout(
+    data: LogoutSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+    authorization: str = Header(...),
+):
+    """
+    Logs out the current device:
+    - Deletes the refresh token session (other devices stay logged in)
+    - Blocklists the current access token until it naturally expires
+    - Optionally removes this device's FCM token
+    """
+    access_token = authorization.replace("Bearer ", "")
+    return await AuthService.logout(
+        data=data,
+        access_token=access_token,
+        user_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+```
+
+```python
+# In your get_current_user dependency, after decoding the token
+if await ttl_cache.exists(f"blocklist:{token}"):
+    raise HTTPException(status_code=401, detail=t("token_revoked", lang))
+```
+
+

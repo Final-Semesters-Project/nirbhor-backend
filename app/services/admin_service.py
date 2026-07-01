@@ -205,3 +205,79 @@ class AdminService:
             status=data.status,
             affected_user_id=affected_user_id,
         )
+
+    @staticmethod
+    async def get_users(
+        db: AsyncSession,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> list[AdminUserListItem]:
+        repo = AdminRepository(db)
+        users = await repo.get_users(role_filter, is_active_filter)
+        return [
+            AdminUserListItem(
+                user_id=u.id,
+                name_en=u.name_en,
+                name_bn=u.name_bn,
+                phone=u.phone_en,
+                role=u.role,
+                is_active=u.is_active,
+                last_active_at=u.last_active_at,
+                created_at=u.created_at,
+            )
+            for u in users
+        ]
+
+    @staticmethod
+    async def get_user_detail(
+        user_id: UUID, db: AsyncSession, lang: str
+    ) -> AdminUserDetail:
+        repo = AdminRepository(db)
+        data = await repo.get_user_detail(user_id)
+        if not data:
+            raise DomainValidationError(t("user_not_found", lang))
+
+        user = data["user"]
+        profile = data["profile"]
+
+        return AdminUserDetail(
+            user_id=user.id,
+            name_en=user.name_en,
+            name_bn=user.name_bn,
+            phone=user.phone_en,
+            role=user.role,
+            is_active=user.is_active,
+            last_active_at=user.last_active_at,
+            created_at=user.created_at,
+            total_bookings=data["total_bookings"],
+            average_rating=profile.average_rating if profile else None,
+            verification_level=profile.verification_level.value if profile else None,
+            verification_status=profile.verification_status.value if profile else None,
+            ai_review_summary_en=profile.ai_review_summary_en if profile else None,
+            ai_review_summary_bn=profile.ai_review_summary_bn if profile else None,
+            has_smartphone=profile.has_smartphone if profile else None,
+            base_location=profile.base_location if profile else None,
+            nid_url_back=profile.nid_url_back if profile else None,
+            nid_url_front=profile.nid_url_front if profile else None,
+            photo_url=profile.photo_url if profile else None,
+            warning_status=profile.warning_status if profile else None,
+            working_radius_km=profile.working_radius_km if profile else None,
+        )
+
+    @staticmethod
+    async def toggle_user_active(
+        user_id: UUID, db: AsyncSession, lang: str
+    ) -> dict:
+        repo = AdminRepository(db)
+        user = await repo.toggle_user_active(user_id)
+        if not user:
+            raise DomainValidationError(t("user_not_found", lang))
+        await db.commit()
+        logger.info(
+            f"Admin toggled user {user_id} is_active → {user.is_active}"
+        )
+        return {
+            "user_id": user_id,
+            "is_active": user.is_active,
+            "message": t("user_status_updated", lang),
+        }
