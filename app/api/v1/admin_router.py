@@ -37,6 +37,7 @@ async def admin_dashboard(
 
 # ── Verifications ──────────────────────────────────────────────────────────────
 
+# TODO: add pagination
 @router.get("/pendingVerifications", response_model=list[VerificationListItem])
 async def list_pending_verifications(
     current_user: User = Depends(get_current_admin),
@@ -71,6 +72,8 @@ async def handle_verification(
     )
 
 # ── Reports ────────────────────────────────────────────────────────────────────
+
+# TODO: add pagination
 
 
 @router.get("/reports", response_model=list[ReportListItem])
@@ -107,6 +110,7 @@ async def handle_report(
 
 # ── Users ──────────────────────────────────────────────────────────────────────
 
+# TODO: apply pagination
 @router.get("/users", response_model=list[AdminUserListItem])
 async def list_users(
     role: Role | None = Query(

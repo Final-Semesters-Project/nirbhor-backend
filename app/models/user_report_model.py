@@ -1,5 +1,5 @@
 import uuid
-from sqlalchemy import Enum as sqlEnum, ForeignKey, String
+from sqlalchemy import Enum as sqlEnum, ForeignKey, Index, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 from app.models.mixins.uuid_mixin import UUIDMixin
@@ -57,4 +57,8 @@ class UserReport(UUIDMixin, TimestampMixin, Base):
         nullable=False,
         default=ReportStatus.PENDING,
         server_default=ReportStatus.PENDING.value,
+    )
+
+    __table_args__ = (
+        Index("ix_user_reports_created_at", "created_at", "id"),
     )

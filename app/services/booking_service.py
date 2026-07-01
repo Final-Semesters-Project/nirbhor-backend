@@ -6,7 +6,8 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 from app.core.integrity_error_parser import parse_integrity_error
-from app.models.booking_model import BookingStatus
+from app.core.paginator import paginate
+from app.models.booking_model import Booking, BookingStatus
 from app.models.provider_profile_model import ProviderProfile
 from app.repositories.booking_repository import BookingRepository
 from app.repositories.skill_repository import SkillRepository
@@ -14,6 +15,7 @@ from app.repositories.user_repository import UserRepository
 from app.schemas.booking_schema import BookingDetailsForLastInitiatedActiveBooking, BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem, LastInitiatedActiveBookingSchema, SingleBookingDetailResponse
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
+from app.schemas.pagination_schema import PageResponse
 
 
 # Business rule: max 10 open (INITIATED) booking at a time per seeker
@@ -301,28 +303,57 @@ class BookingService:
         provider_id: UUID,
         db: AsyncSession,
         lang: str,
-    ) -> list[BookingListItem]:
+        page: int = 1,
+        page_size: int = 20
+    ) -> PageResponse[BookingListItem]:
         """Provider's 'Incoming Bookings' tab — only IN_PROGRESS bookings will be shown."""
         booking_repo = BookingRepository(db)
-        bookings_with_seekers = await booking_repo.get_provider_incoming_with_seekers(provider_id)
+        # bookings_with_seekers = await booking_repo.get_provider_incoming_with_seekers(provider_id)
 
-        result = []
-        logger.info(f"bookings_with_seekers: {bookings_with_seekers}")
-        for booking, seeker in bookings_with_seekers:
-            localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
-            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
-            logger.success(dict(result))
-            result.append(BookingListItem(
+        def transform(row):
+            booking, seeker = row
+            return BookingListItem(
                 booking_id=booking.id,
                 status=booking.status,
                 skill_id=booking.skill_id,
-                skill_name=localized_skill_name,
+                skill_name=(
+                    booking.skill.name_bn if lang == "bn"
+                    else booking.skill.name_en
+                ),
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
-                other_party_name=localized_name,
+                other_party_name=(
+                    seeker.name_bn if lang == "bn" else seeker.name_en
+                ),
                 other_party_phone=seeker.phone_en,
-            ))
-        return result
+            )
+
+        return await paginate(
+            db=db,
+            stmt=booking_repo.get_provider_incoming_stmt(provider_id),
+            pk_col=Booking.id,
+            page=page,
+            page_size=page_size,
+            transformer=transform,
+        )
+
+        # result = []
+        # logger.info(f"bookings_with_seekers: {bookings_with_seekers}")
+        # for booking, seeker in bookings_with_seekers:
+        #     localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
+        #     localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+        #     logger.success(dict(result))
+        #     result.append(BookingListItem(
+        #         booking_id=booking.id,
+        #         status=booking.status,
+        #         skill_id=booking.skill_id,
+        #         skill_name=localized_skill_name,
+        #         created_at=booking.created_at,
+        #         work_schedule=booking.work_schedule,
+        #         other_party_name=localized_name,
+        #         other_party_phone=seeker.phone_en,
+        #     ))
+        # return result
 
     @staticmethod
     async def get_providers_completed_bookings(
@@ -392,28 +423,52 @@ class BookingService:
         seeker_id: UUID,
         db: AsyncSession,
         lang: str,
-    ) -> list[BookingListItem]:
+        page: int = 1,
+        page_size: int = 20
+    ) -> PageResponse[BookingListItem]:
         """Seeker's full booking history including INITIATED entries."""
         booking_repo = BookingRepository(db)
-        bookings_with_providers = await booking_repo.get_seeker_history_with_providers(seeker_id)
+        # bookings_with_providers = await booking_repo.get_seeker_history_with_providers(seeker_id)
 
-        result = []
-        for booking, provider in bookings_with_providers:
-            localized_name = provider.name_bn if lang == "bn" else provider.name_en
-            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
-            phone = provider.phone_en
+        def transform(row):
+            booking, provider = row
 
-            result.append(BookingListItem(
+            return BookingListItem(
                 booking_id=booking.id,
                 status=booking.status,
                 skill_id=booking.skill_id,
-                skill_name=localized_skill_name,
+                skill_name=booking.skill.name_bn if lang == "bn" else booking.skill.name_en,
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
-                other_party_name=localized_name,
-                other_party_phone=phone,
-            ))
-        return result
+                other_party_name=provider.name_bn if lang == "bn" else provider.name_en,
+                other_party_phone=provider.phone_en,
+            )
+
+        # result = []
+        # for booking, provider in bookings_with_providers:
+        #     localized_name = provider.name_bn if lang == "bn" else provider.name_en
+        #     localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+        #     phone = provider.phone_en
+
+        #     result.append(BookingListItem(
+        #         booking_id=booking.id,
+        #         status=booking.status,
+        #         skill_id=booking.skill_id,
+        #         skill_name=localized_skill_name,
+        #         created_at=booking.created_at,
+        #         work_schedule=booking.work_schedule,
+        #         other_party_name=localized_name,
+        #         other_party_phone=phone,
+        #     ))
+        return await paginate(
+            db=db,
+            stmt=booking_repo.get_seeker_history_with_providers_stmt(
+                seeker_id),
+            pk_col=Booking.id,
+            transformer=transform,
+            page_size=page_size,
+            page=page
+        )
 
     @staticmethod
     async def mark_completed(

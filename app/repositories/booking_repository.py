@@ -2,7 +2,7 @@ from typing import Sequence
 from uuid import UUID
 from datetime import datetime, timedelta, timezone
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, update
+from sqlalchemy import and_, or_, select, func, update
 from geoalchemy2.functions import ST_MakePoint, ST_SetSRID
 from sqlalchemy.orm import selectinload
 from app.models.booking_model import Booking, BookingStatus
@@ -129,12 +129,25 @@ class BookingRepository(BaseRepository[Booking]):
     async def get_provider_incoming(self, provider_id: UUID) -> list[Booking]:
         """Bookings where this provider has active work (IN_PROGRESS only => Incoming Bookings)."""
         result = await self.db.execute(
-            select(Booking)
+            self.get_provider_incoming_stmt(provider_id)
+            # select(Booking)
+            # .where(Booking.provider_id == provider_id)
+            # .where(Booking.status == BookingStatus.IN_PROGRESS)
+            # .order_by(Booking.confirmed_at.desc())
+        )
+        return list(result.scalars().all())
+
+    # TODO: use this
+    def get_provider_incoming_stmt(self, provider_id: UUID):
+        """Statement for provider's IN_PROGRESS bookings."""
+        return (
+            select(Booking, User)
+            .join(User, Booking.seeker_id == User.id)
+            .options(selectinload(Booking.skill))
             .where(Booking.provider_id == provider_id)
             .where(Booking.status == BookingStatus.IN_PROGRESS)
             .order_by(Booking.confirmed_at.desc())
         )
-        return list(result.scalars().all())
 
     async def get_provider_incoming_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
         """Bookings with seeker & skill eagerly loaded."""
@@ -167,13 +180,30 @@ class BookingRepository(BaseRepository[Booking]):
     async def get_seeker_history_with_providers(self, seeker_id: UUID) -> list[tuple[Booking, User]]:
         """Bookings with provider eagerly loaded."""
         result = await self.db.execute(
+            self.get_seeker_history_with_providers_stmt(seeker_id)
+            # select(Booking, User)
+            # .join(User, Booking.provider_id == User.id)
+            # .options(selectinload(Booking.skill))
+            # .where(Booking.seeker_id == seeker_id)
+            # .order_by(Booking.created_at.desc())
+        )
+        return list(result.tuples())
+
+    def get_seeker_history_with_providers_stmt(self, seeker_id: UUID):
+        """
+        Returns the SELECT statement for seeker booking history.
+        Used by both paginate() and get_seeker_history_with_providers().
+
+        NOT async — returns a Select object, not a coroutine.
+        The paginator needs the raw statement to apply LIMIT/OFFSET and COUNT.
+        """
+        return (
             select(Booking, User)
             .join(User, Booking.provider_id == User.id)
             .options(selectinload(Booking.skill))
             .where(Booking.seeker_id == seeker_id)
             .order_by(Booking.created_at.desc())
         )
-        return list(result.tuples())
 
     async def get_seeker_history(self, seeker_id: UUID) -> list[Booking]:
         """All bookings for this seeker, newest first."""
