@@ -9,6 +9,7 @@ import enum
 
 class ReportStatus(str, enum.Enum):
     PENDING = "pending"
+    UNDER_INVESTIGATION = "under_investigation"
     REVIEWED = "reviewed"
     ACTION_TAKEN = "action_taken"
 

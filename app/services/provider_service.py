@@ -80,13 +80,6 @@ class ProviderService:
         db: AsyncSession,
         update_data: ProviderProfileUpdateSchema
     ) -> dict:
-        # re-validate with language context so error messages are translated
-        # FIXME: enable this block if translations are not working
-        # data = ProviderProfileUpdateSchema.model_validate(
-        #     update_data.model_dump(),
-        #     context={"lang": lang}
-        # )
-
         provider_repo = ProviderRepository(db)
 
         # fetch the existing provider data
@@ -126,6 +119,31 @@ class ProviderService:
 
             data_dict["radius_updated_at"] = func.now()
 
+        # ── Verification photo upload gating ───────────────────────────────────
+        verification_fields = {"photo_url", "nid_url_front", "nid_url_back"}
+        verification_public_ids = {
+            "photo_public_id",
+            "nid_front_public_id",
+            "nid_back_public_id",
+        }
+        is_uploading_verification_photo = any(
+            field in data_dict for field in verification_fields
+        )
+
+        if is_uploading_verification_photo:
+            # Rule 1: PENDING or APPROVED blocks any new photo upload entirely
+            if provider_instance.verification_status in (
+                VerificationStatus.PENDING,
+                VerificationStatus.APPROVED,
+            ):
+                for field in verification_public_ids:
+                    if field in data_dict:
+                        await delete_image_from_cloudinary(
+                            public_id=data_dict[field]
+                        )
+
+                raise DomainValidationError(t("verification_locked", lang))
+
         # Prevent NID image re-uploads if verification is approved
         nid_fields = ["nid_front_public_id", "nid_back_public_id"]
         if any(field in data_dict for field in nid_fields):
@@ -135,25 +153,38 @@ class ProviderService:
                     detail=t("nid_already_verified", lang),
                 )
 
-        # if "photo_public_id" in data_dict and provider_instance.photo_public_id is not None:
-        #     if data_dict["photo_public_id"] != provider_instance.photo_public_id:
-        #         await delete_image_from_cloudinary(public_id=provider_instance.photo_public_id)
-
-        # if "nid_front_public_id" in data_dict and provider_instance.nid_front_public_id is not None:
-        #     if data_dict["nid_front_public_id"] != provider_instance.nid_front_public_id:
-        #         await delete_image_from_cloudinary(public_id=provider_instance.nid_front_public_id)
-
-        # if "nid_back_public_id" in data_dict and provider_instance.nid_back_public_id is not None:
-        #     if data_dict["nid_back_public_id"] != provider_instance.nid_back_public_id:
-        #         await delete_image_from_cloudinary(public_id=provider_instance.nid_back_public_id)
-
         # handling images = new photo uploaded in cloudinary -> client send url + public_id -> delete the old photo from cloudinary -> update the photo url and public_id
         await ProviderService._delete_old_image_if_changed(data_dict, "photo_public_id", provider_instance.photo_public_id)
         await ProviderService._delete_old_image_if_changed(data_dict, "nid_front_public_id", provider_instance.nid_front_public_id)
         await ProviderService._delete_old_image_if_changed(data_dict, "nid_back_public_id", provider_instance.nid_back_public_id)
 
         try:
-            await provider_repo.update(instance=provider_instance, **data_dict)
+            updated_provider = await provider_repo.update(instance=provider_instance, **data_dict)
+
+           # ── Verification status auto-transition ─────────────────────────────────
+            # Check AFTER the update so we see the final merged state — a provider
+            # might already have 2 of 3 photos from before, and this call adds the 3rd.
+            if is_uploading_verification_photo:
+                has_all_three = (
+                    updated_provider.photo_url is not None
+                    and updated_provider.nid_url_front is not None
+                    and updated_provider.nid_url_back is not None
+                )
+                # Only auto-transition from these two starting states.
+                # PENDING/APPROVED can't reach here (blocked above).
+                if has_all_three and updated_provider.verification_status in (
+                    VerificationStatus.NOT_INITIATED,
+                    VerificationStatus.REJECTED,
+                ):
+                    updated_provider.verification_status = VerificationStatus.PENDING
+                    updated_provider.verification_rejection_reason = None  # clear stale reason
+                    logger.info(
+                        f"Provider {provider_id} verification auto-set to PENDING "
+                        f"(all 3 photos present)"
+                    )
+
+            await db.commit()
+
             return {
                 "message": t("profile_updated", lang)
             }

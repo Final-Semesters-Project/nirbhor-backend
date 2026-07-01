@@ -55,145 +55,16 @@ app/
 ### `app/repositories/admin_repository.py` — new
 
 ```python
-from uuid import UUID
-from datetime import datetime, timedelta, timezone
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, func, case, update
-from sqlalchemy.orm import aliased
-
-from app.models.user import User, Role
-from app.models.provider_profile import ProviderProfile, VerificationStatus, VerificationLevel
-from app.models.booking import Booking, BookingStatus
-from app.models.user_report import UserReport, ReportStatus
 
 
 class AdminRepository:
-    def __init__(self, db: AsyncSession):
-        self.db = db
-
     # ── Dashboard ─────────────────────────────────────────────────────────────
 
     # ── Verifications ─────────────────────────────────────────────────────────
 
-    async def get_pending_verifications(self) -> list:
-        result = await self.db.execute(
-            select(User, ProviderProfile)
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
-            .order_by(ProviderProfile.updated_at.asc())   # oldest first
-        )
-        return result.all()
-
-    async def get_provider_for_verification(
-        self, provider_id: UUID
-    ) -> tuple | None:
-        result = await self.db.execute(
-            select(User, ProviderProfile)
-            .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .where(User.id == provider_id)
-        )
-        return result.first()
-
-    async def approve_verification(self, provider_id: UUID) -> ProviderProfile:
-        profile = await self.db.get(ProviderProfile, provider_id)
-        profile.verification_status = VerificationStatus.APPROVED
-        profile.verification_level = VerificationLevel.VERIFIED
-        profile.verification_rejection_reason = None
-        await self.db.flush()
-        return profile
-
-    async def reject_verification(
-        self, provider_id: UUID, reason: str
-    ) -> ProviderProfile:
-        profile = await self.db.get(ProviderProfile, provider_id)
-        profile.verification_status = VerificationStatus.REJECTED
-        profile.verification_rejection_reason = reason
-        await self.db.flush()
-        return profile
-
     # ── Reports ───────────────────────────────────────────────────────────────
 
-    async def get_reports(self, status_filter: str | None = None) -> list:
-        Reporter = aliased(User, name="reporter")
-        Reported = aliased(User, name="reported")
-
-        stmt = (
-            select(UserReport, Reporter, Reported)
-            .join(Reporter, UserReport.reporter_id == Reporter.id)
-            .join(Reported, UserReport.reported_user_id == Reported.id)
-            .order_by(UserReport.created_at.desc())
-        )
-        if status_filter:
-            stmt = stmt.where(UserReport.status == status_filter)
-
-        result = await self.db.execute(stmt)
-        return result.all()
-
-    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
-        result = await self.db.execute(
-            select(UserReport).where(UserReport.id == report_id)
-        )
-        return result.scalar_one_or_none()
-
-    async def update_report_status(
-        self,
-        report_id: UUID,
-        new_status: ReportStatus,
-    ) -> UserReport:
-        report = await self.db.get(UserReport, report_id)
-        report.status = new_status
-        await self.db.flush()
-        return report
-
-    async def suspend_user(self, user_id: UUID) -> User:
-        user = await self.db.get(User, user_id)
-        user.is_active = False
-        await self.db.flush()
-        return user
-
     # ── Users ─────────────────────────────────────────────────────────────────
-
-    async def get_users(
-        self,
-        role_filter: str | None = None,
-        is_active_filter: bool | None = None,
-    ) -> list[User]:
-        stmt = select(User).order_by(User.created_at.desc())
-        if role_filter:
-            stmt = stmt.where(User.role == role_filter)
-        if is_active_filter is not None:
-            stmt = stmt.where(User.is_active == is_active_filter)
-        result = await self.db.execute(stmt)
-        return list(result.scalars().all())
-
-    async def get_user_detail(self, user_id: UUID) -> dict | None:
-        user = await self.db.get(User, user_id)
-        if not user:
-            return None
-
-        total_bookings = await self.db.scalar(
-            select(func.count())
-            .select_from(Booking)
-            .where(
-                (Booking.seeker_id == user_id) | (Booking.provider_id == user_id)
-            )
-        )
-
-        profile = None
-        if user.role == Role.PROVIDER:
-            profile = await self.db.get(ProviderProfile, user_id)
-
-        return {
-            "user": user,
-            "total_bookings": total_bookings or 0,
-            "profile": profile,
-        }
-
-    async def toggle_user_active(self, user_id: UUID) -> User:
-        user = await self.db.get(User, user_id)
-        user.is_active = not user.is_active
-        await self.db.flush()
-        return user
 
     # ── Analytics ─────────────────────────────────────────────────────────────
 
@@ -263,191 +134,8 @@ class AdminRepository:
 ### `app/services/admin_service.py` — new
 
 ```python
-from uuid import UUID
-from sqlalchemy.ext.asyncio import AsyncSession
-from loguru import logger
-
-from app.repositories.admin_repository import AdminRepository
-from app.schemas.admin_schema import (
-    AdminDashboardResponse,
-    VerificationListItem,
-    VerificationActionSchema,
-    VerificationActionResponse,
-    ReportListItem,
-    ReportActionSchema,
-    ReportActionResponse,
-    AdminUserListItem,
-    AdminUserDetail,
-    AdminAnalyticsResponse,
-)
-from app.models.user_report import ReportStatus
-from app.core.exceptions import DomainValidationError, DomainIntegrityError
-from app.core.i18n import t
-
 
 class AdminService:
-
-    @staticmethod
-    async def handle_verification(
-        provider_id: UUID,
-        data: VerificationActionSchema,
-        db: AsyncSession,
-        lang: str,
-    ) -> VerificationActionResponse:
-        repo = AdminRepository(db)
-
-        row = await repo.get_provider_for_verification(provider_id)
-        if not row:
-            raise DomainValidationError(t("provider_not_found", lang))
-
-        if data.action == "approve":
-            profile = await repo.approve_verification(provider_id)
-            logger.info(f"Admin approved verification for provider {provider_id}")
-            # TODO: send FCM to provider — "Your account is now verified!"
-        else:
-            if not data.rejection_reason:
-                raise DomainValidationError(t("rejection_reason_required", lang))
-            profile = await repo.reject_verification(provider_id, data.rejection_reason)
-            logger.info(
-                f"Admin rejected verification for provider {provider_id}: "
-                f"{data.rejection_reason}"
-            )
-            # TODO: send FCM to provider — "Your verification was rejected: {reason}"
-
-        await db.commit()
-
-        return VerificationActionResponse(
-            user_id=provider_id,
-            verification_status=profile.verification_status.value,
-            verification_level=profile.verification_level.value,
-            message=t("verification_updated", lang),
-        )
-
-    @staticmethod
-    async def get_reports(
-        db: AsyncSession,
-        lang: str,
-        status_filter: str | None = None,
-    ) -> list[ReportListItem]:
-        repo = AdminRepository(db)
-        rows = await repo.get_reports(status_filter)
-        return [
-            ReportListItem(
-                report_id=report.id,
-                reporter_name=reporter.name_en,
-                reported_user_name=reported.name_en,
-                reported_user_role=reported.role.value,
-                reason=report.reason,
-                status=report.status.value,
-                booking_id=report.booking_id,
-                created_at=report.created_at,
-            )
-            for report, reporter, reported in rows
-        ]
-
-    @staticmethod
-    async def handle_report(
-        report_id: UUID,
-        data: ReportActionSchema,
-        db: AsyncSession,
-        lang: str,
-    ) -> ReportActionResponse:
-        repo = AdminRepository(db)
-
-        report = await repo.get_report_by_id(report_id)
-        if not report:
-            raise DomainValidationError(t("report_not_found", lang))
-
-        affected_user_id = None
-
-        if data.action == "suspend":
-            # Suspend the reported user and mark report as ACTION_TAKEN
-            await repo.suspend_user(report.reported_user_id)
-            await repo.update_report_status(report_id, ReportStatus.ACTION_TAKEN)
-            affected_user_id = report.reported_user_id
-            logger.info(
-                f"Admin suspended user {report.reported_user_id} "
-                f"via report {report_id}"
-            )
-        elif data.action == "dismiss":
-            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
-            logger.info(f"Admin dismissed report {report_id}")
-        elif data.action == "reviewed":
-            await repo.update_report_status(report_id, ReportStatus.REVIEWED)
-
-        await db.commit()
-
-        return ReportActionResponse(
-            report_id=report_id,
-            status=data.action,
-            affected_user_id=affected_user_id,
-        )
-
-    @staticmethod
-    async def get_users(
-        db: AsyncSession,
-        role_filter: str | None = None,
-        is_active_filter: bool | None = None,
-    ) -> list[AdminUserListItem]:
-        repo = AdminRepository(db)
-        users = await repo.get_users(role_filter, is_active_filter)
-        return [
-            AdminUserListItem(
-                user_id=u.id,
-                name=u.name_en,
-                phone=u.phone_en,
-                role=u.role.value,
-                is_active=u.is_active,
-                last_active_at=u.last_active_at,
-                created_at=u.created_at,
-            )
-            for u in users
-        ]
-
-    @staticmethod
-    async def get_user_detail(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> AdminUserDetail:
-        repo = AdminRepository(db)
-        data = await repo.get_user_detail(user_id)
-        if not data:
-            raise DomainValidationError(t("user_not_found", lang))
-
-        u = data["user"]
-        profile = data["profile"]
-
-        return AdminUserDetail(
-            user_id=u.id,
-            name=u.name_en,
-            phone=u.phone_en,
-            role=u.role.value,
-            is_active=u.is_active,
-            last_active_at=u.last_active_at,
-            created_at=u.created_at,
-            total_bookings=data["total_bookings"],
-            average_rating=profile.average_rating if profile else None,
-            verification_level=profile.verification_level.value if profile else None,
-            verification_status=profile.verification_status.value if profile else None,
-        )
-
-    @staticmethod
-    async def toggle_user_active(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> dict:
-        repo = AdminRepository(db)
-        user = await repo.toggle_user_active(user_id)
-        if not user:
-            raise DomainValidationError(t("user_not_found", lang))
-        await db.commit()
-        logger.info(
-            f"Admin toggled user {user_id} is_active → {user.is_active}"
-        )
-        return {
-            "user_id": user_id,
-            "is_active": user.is_active,
-            "message": t("user_status_updated", lang),
-        }
-
     @staticmethod
     async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
         repo = AdminRepository(db)
@@ -467,100 +155,12 @@ class AdminService:
 
 ```python
 
-@router.patch(
-    "/verifications/{provider_id}",
-    response_model=VerificationActionResponse,
-)
-async def handle_verification(
-    provider_id: UUID,
-    data: VerificationActionSchema,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    Approve or reject a provider's verification request.
-    - approve → verification_level becomes VERIFIED, rejection_reason cleared
-    - reject  → rejection_reason required, provider stays BASIC
-    """
-    return await AdminService.handle_verification(
-        provider_id=provider_id,
-        data=data,
-        db=db,
-        lang=lang,
-    )
-
 
 # ── Reports ────────────────────────────────────────────────────────────────────
 
-@router.get("/reports", response_model=list[ReportListItem])
-async def list_reports(
-    status: str | None = Query(None, description="Filter: PENDING, REVIEWED, ACTION_TAKEN"),
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    return await AdminService.get_reports(db=db, lang=lang, status_filter=status)
-
-
-@router.patch("/reports/{report_id}", response_model=ReportActionResponse)
-async def handle_report(
-    report_id: UUID,
-    data: ReportActionSchema,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """
-    - dismiss  → marks report REVIEWED, no action on reported user
-    - reviewed → marks report REVIEWED
-    - suspend  → marks report ACTION_TAKEN + sets reported user is_active=False
-    """
-    return await AdminService.handle_report(
-        report_id=report_id,
-        data=data,
-        db=db,
-        lang=lang,
-    )
-
-
 # ── Users ──────────────────────────────────────────────────────────────────────
 
-@router.get("/users", response_model=list[AdminUserListItem])
-async def list_users(
-    role: str | None = Query(None, description="Filter: SEEKER, PROVIDER, ADMIN"),
-    is_active: bool | None = Query(None, description="Filter by active status"),
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-):
-    return await AdminService.get_users(
-        db=db, role_filter=role, is_active_filter=is_active
-    )
 
-
-@router.get("/users/{user_id}", response_model=AdminUserDetail)
-async def get_user_detail(
-    user_id: UUID,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    return await AdminService.get_user_detail(
-        user_id=user_id, db=db, lang=lang
-    )
-
-
-@router.patch("/users/{user_id}/toggle", status_code=200)
-async def toggle_user_active(
-    user_id: UUID,
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-):
-    """Enable or disable a user account. Toggles current is_active value."""
-    return await AdminService.toggle_user_active(
-        user_id=user_id, db=db, lang=lang
-    )
 
 
 # ── Analytics ──────────────────────────────────────────────────────────────────
@@ -969,4 +569,115 @@ async def register_fcm_token(
 
     await db.execute(stmt)
     await db.commit()
+``` 
+
+# =============================== LOGOUT ==================================
+```python
+# app/schemas/auth_schema.py
+
+from pydantic import BaseModel
+
+class LogoutSchema(BaseModel):
+    refresh_token: str
+    fcm_token: str | None = None   # optional: also clear this device's FCM token
 ```
+
+```python
+# app/repositories/user_repository.py — add this method
+
+async def delete_session_by_refresh_token(self, refresh_token: str) -> bool:
+    """Deletes the session row matching this refresh token. Returns True if found."""
+    from sqlalchemy import delete
+    result = await self.db.execute(
+        delete(UserSession)
+        .where(UserSession.refresh_token == refresh_token)
+        .returning(UserSession.id)
+    )
+    return result.first() is not None
+```
+
+```python
+# app/services/auth_service.py
+
+@staticmethod
+async def logout(
+    data: LogoutSchema,
+    access_token: str,
+    user_id: UUID,
+    db: AsyncSession,
+    lang: str,
+) -> dict:
+    user_repo = UserRepository(db)
+
+    # 1. Delete the refresh token session row — this is the durable logout
+    deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
+    if not deleted:
+        # Not fatal — token might already be gone (e.g. double logout tap)
+        logger.warning(f"Logout: refresh token not found for user {user_id}")
+
+    # 2. Blocklist the current access token until it naturally expires
+    # Access tokens are short-lived (1hr), so the TTL cache entry only
+    # needs to live until the token's own expiry — no need to track forever.
+    from app.core.security import decode_access_token
+    from app.core.cache import ttl_cache  # your Redis/TTL cache client
+
+    payload = decode_access_token(access_token)
+    remaining_seconds = max(0, payload["exp"] - int(datetime.now(timezone.utc).timestamp()))
+    if remaining_seconds > 0:
+        await ttl_cache.set(
+            key=f"blocklist:{access_token}",
+            value="1",
+            ttl_seconds=remaining_seconds,
+        )
+
+    # 3. Optionally remove this device's FCM token so a stale session
+    # can't receive notifications meant for whoever logs in next
+    if data.fcm_token:
+        from sqlalchemy import delete
+        from app.models.fcm_token import FCMToken
+        await db.execute(
+            delete(FCMToken)
+            .where(FCMToken.user_id == user_id)
+            .where(FCMToken.token == data.fcm_token)
+        )
+
+    await db.commit()
+    logger.info(f"User {user_id} logged out")
+
+    return {"message": t("logout_successful", lang)}
+```
+
+```python
+# app/api/v1/auth.py
+
+@router.post("/logout", status_code=200)
+async def logout(
+    data: LogoutSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+    authorization: str = Header(...),
+):
+    """
+    Logs out the current device:
+    - Deletes the refresh token session (other devices stay logged in)
+    - Blocklists the current access token until it naturally expires
+    - Optionally removes this device's FCM token
+    """
+    access_token = authorization.replace("Bearer ", "")
+    return await AuthService.logout(
+        data=data,
+        access_token=access_token,
+        user_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+```
+
+```python
+# In your get_current_user dependency, after decoding the token
+if await ttl_cache.exists(f"blocklist:{token}"):
+    raise HTTPException(status_code=401, detail=t("token_revoked", lang))
+```
+
+

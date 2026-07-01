@@ -3,7 +3,8 @@ from uuid import UUID
 from datetime import datetime
 from typing import Literal
 
-from app.models.provider_profile_model import VerificationStatus
+from app.models.provider_profile_model import VerificationLevel, VerificationStatus
+from app.models.user_model import Role
 from app.models.user_report_model import ReportStatus
 
 
@@ -43,8 +44,8 @@ class VerificationActionSchema(BaseModel):
 
 class VerificationActionResponse(BaseModel):
     user_id: UUID
-    verification_status: str
-    verification_level: str
+    verification_status: VerificationStatus
+    verification_level: VerificationLevel
     message: str
 
 
@@ -54,7 +55,7 @@ class ReportListItem(BaseModel):
     report_id: UUID
     reporter_name: str
     reported_user_name: str
-    reported_user_role: str
+    reported_user_role: Role
     reason: str
     status: ReportStatus
     booking_id: UUID | None
@@ -65,6 +66,7 @@ class ReportListItem(BaseModel):
 
 class ReportActionSchema(BaseModel):
     status: ReportStatus
+    admin_internal_notes: str | None = None
 
 
 class ReportActionResponse(BaseModel):
@@ -77,9 +79,10 @@ class ReportActionResponse(BaseModel):
 
 class AdminUserListItem(BaseModel):
     user_id: UUID
-    name: str
+    name_en: str
+    name_bn: str
     phone: str
-    role: str
+    role: Role
     is_active: bool
     last_active_at: datetime | None
     created_at: datetime
@@ -93,6 +96,17 @@ class AdminUserDetail(AdminUserListItem):
     average_rating: float | None    # providers only
     verification_level: str | None  # providers only
     verification_status: str | None  # providers only
+    photo_url: str | None
+    nid_url_front: str | None
+    nid_url_back: str | None
+    base_location: str | None
+    working_radius_km: int | None
+    has_smartphone: bool | None
+    warning_status: bool | None
+    ai_review_summary_en: str | None
+    ai_review_summary_bn: str | None
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 # ── Analytics ──────────────────────────────────────────────────────────────────

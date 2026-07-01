@@ -1,11 +1,13 @@
 import asyncio
 from datetime import datetime, timedelta, timezone
 from typing import Sequence
+from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
 from app.models.user_model import User, Role
-from app.models.provider_profile_model import ProviderProfile, VerificationStatus
+from app.models.provider_profile_model import ProviderProfile, VerificationLevel, VerificationStatus
 from app.models.booking_model import Booking
 from app.models.user_report_model import UserReport, ReportStatus
 
@@ -81,3 +83,127 @@ class AdminRepository(BaseRepository):
             .order_by(ProviderProfile.updated_at.asc())   # oldest first
         )
         return result.all()
+
+    # async def get_provider_for_verification(
+    #     self,
+    #     provider_id: UUID
+    # ) -> tuple[User, ProviderProfile] | None:
+    #     result = await self.db.execute(
+    #         select(User, ProviderProfile)
+    #         .join(ProviderProfile, User.id == ProviderProfile.user_id)
+    #         .where(User.id == provider_id)
+    #     )
+    #     row = result.first()
+    #     if row is None:
+    #         return None
+    #     return (row[0], row[1])
+
+    async def approve_verification(self, provider_profile: ProviderProfile) -> ProviderProfile:
+        provider_profile.verification_status = VerificationStatus.APPROVED
+        provider_profile.verification_level = VerificationLevel.VERIFIED
+        provider_profile.verification_rejection_reason = None
+        await self.db.flush()
+        return provider_profile
+
+    async def reject_verification(
+        self,
+        provider_profile: ProviderProfile,
+        reason: str
+    ) -> ProviderProfile | None:
+        provider_profile.verification_status = VerificationStatus.REJECTED
+        provider_profile.verification_rejection_reason = reason
+        await self.db.flush()
+        return provider_profile
+
+    # ── Reports ───────────────────────────────────────────────────────────────
+
+    async def get_reports(self, status_filter: str | None = None) -> Sequence:
+        Reporter = aliased(User, name="reporter")
+        Reported = aliased(User, name="reported")
+
+        stmt = (
+            select(UserReport, Reporter, Reported)
+            .join(Reporter, UserReport.reporter_id == Reporter.id)
+            .join(Reported, UserReport.reported_user_id == Reported.id)
+            .order_by(UserReport.created_at.desc())
+        )
+        if status_filter:
+            stmt = stmt.where(UserReport.status == status_filter)
+
+        result = await self.db.execute(stmt)
+        return result.all()
+
+    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
+        result = await self.db.execute(
+            select(UserReport).where(UserReport.id == report_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_report_status(
+        self,
+        report: UserReport,
+        new_status: ReportStatus,
+    ) -> UserReport:
+        report.status = new_status
+        await self.db.flush()
+        return report
+
+    async def suspend_user(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        if user.role == Role.ADMIN:
+            return None
+
+        user.is_active = False
+        await self.db.flush()
+        return user
+
+    async def get_users(
+        self,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> Sequence[User]:
+        stmt = select(User).order_by(User.created_at.desc())
+        if role_filter:
+            stmt = stmt.where(User.role == role_filter)
+        if is_active_filter is not None:
+            stmt = stmt.where(User.is_active == is_active_filter)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_detail(self, user_id: UUID) -> dict | None:
+        user = await self.db.get(User, user_id)
+        if not user:
+            return None
+
+        total_bookings = await self.db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(
+                (Booking.seeker_id == user_id) | (
+                    Booking.provider_id == user_id)
+            )
+        )
+
+        profile = None
+        if user.role == Role.PROVIDER:
+            profile = await self.db.get(ProviderProfile, user_id)
+
+        return {
+            "user": user,
+            "total_bookings": total_bookings or 0,
+            "profile": profile,
+        }
+
+    async def toggle_user_active(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        user.is_active = not user.is_active
+        await self.db.flush()
+        return user
