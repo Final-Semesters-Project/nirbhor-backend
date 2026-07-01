@@ -11,6 +11,7 @@ from app.services.search_service import SearchService
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
+# TODO: add pagination
 @router.get("/providers")
 async def search_providers(
     skill_id: int = Query(..., description="Skill ID selected from dropdown"),

@@ -1,14 +1,12 @@
 from app.db.base import Base
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
-from sqlalchemy import Integer, String, ForeignKey, Enum as sqlEnum, DateTime
+from sqlalchemy import Index, Integer, String, ForeignKey, Enum as sqlEnum, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
 from datetime import datetime
 from geoalchemy2 import Geometry, WKBElement
-
-# CONFIRMED = "confirmed"
 
 
 class BookingStatus(str, enum.Enum):
@@ -69,13 +67,12 @@ class Booking(UUIDMixin, TimestampMixin, Base):
         default=BookingStatus.INITIATED,
         server_default=BookingStatus.INITIATED.value
     )
-    # FIXME: should I index status?
 
     call_unlocked_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True),
-        nullable=False
+        nullable=False,
+        index=True
     )
-    # FIXME: should I index call_unlocked_at?
 
     confirmed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
@@ -112,4 +109,18 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     reviews: Mapped[list["Review"]] = relationship(  # type: ignore
         back_populates="booking",
         cascade="all, delete-orphan",
+    )
+
+    __table_args__ = (
+        Index("ix_bookings_seeker_id_created_at",
+              "seeker_id", "created_at", "id"),
+        Index("ix_bookings_provider_id_created_at",
+              "provider_id", "created_at", "id"),
+
+        # Optimization: Speed up polling jobs finding active/initiated sessions
+        Index(
+            "ix_bookings_active_status",
+            "status",
+            postgresql_where=(status.in_(["initiated", "in_progress"]))
+        ),
     )

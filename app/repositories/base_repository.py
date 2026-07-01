@@ -1,6 +1,6 @@
 from typing import Generic, TypeVar, Type
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import and_, or_, select
 from app.db.base import Base
 import uuid
 

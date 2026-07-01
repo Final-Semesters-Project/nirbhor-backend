@@ -1,6 +1,6 @@
 from app.db.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Boolean
+from sqlalchemy import Index, String, Boolean
 import enum
 from sqlalchemy import Enum as sqlEnum, DateTime
 from app.models.mixins.timestamp_mixin import TimestampMixin
@@ -130,4 +130,8 @@ class User(UUIDMixin, TimestampMixin, Base):
     reviews_received: Mapped[list["Review"]] = relationship(  # type: ignore
         back_populates="reviewee",
         foreign_keys="Review.reviewee_id",
+    )
+
+    __table_args__ = (
+        Index("ix_users_created_at", "created_at", "id"),
     )
