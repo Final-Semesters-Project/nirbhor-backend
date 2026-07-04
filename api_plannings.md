@@ -55,8 +55,6 @@ app/
 ### `app/repositories/admin_repository.py` — new
 
 ```python
-
-
 class AdminRepository:
     # ── Dashboard ─────────────────────────────────────────────────────────────
 
@@ -67,60 +65,6 @@ class AdminRepository:
     # ── Users ─────────────────────────────────────────────────────────────────
 
     # ── Analytics ─────────────────────────────────────────────────────────────
-
-    async def get_analytics(self) -> dict:
-        now = datetime.now(timezone.utc)
-
-        total_users = await self.db.scalar(select(func.count()).select_from(User))
-        total_bookings = await self.db.scalar(select(func.count()).select_from(Booking))
-        avg_rating = await self.db.scalar(
-            select(func.avg(ProviderProfile.average_rating))
-            .where(ProviderProfile.average_rating.is_not(None))
-        )
-        seeker_count = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.SEEKER)
-        )
-        provider_count = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.PROVIDER)
-        )
-        active_providers = await self.db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.role == Role.PROVIDER)
-            .where(User.last_active_at >= now - timedelta(days=30))
-        )
-
-        # Bookings per week for last 8 weeks
-        # DATE_TRUNC groups timestamps into week buckets
-        from sqlalchemy import text
-        weekly_result = await self.db.execute(
-            select(
-                func.date_trunc("week", Booking.created_at).label("week_start"),
-                func.count().label("count"),
-            )
-            .where(Booking.created_at >= now - timedelta(weeks=8))
-            .group_by(text("week_start"))
-            .order_by(text("week_start"))
-        )
-        bookings_per_week = [
-            {"week_start": r.week_start, "count": r.count}
-            for r in weekly_result.all()
-        ]
-
-        seeker_count = seeker_count or 0
-        provider_count = provider_count or 0
-        ratio = round(seeker_count / provider_count, 2) if provider_count > 0 else None
-
-        return {
-            "total_users": total_users or 0,
-            "total_bookings": total_bookings or 0,
-            "average_provider_rating": round(float(avg_rating), 2) if avg_rating else None,
-            "active_providers_count": active_providers or 0,
-            "seeker_count": seeker_count,
-            "provider_count": provider_count,
-            "seeker_to_provider_ratio": ratio,
-            "bookings_per_week": bookings_per_week,
-        }
 ```
 
 ---
@@ -133,16 +77,6 @@ class AdminRepository:
 
 ### `app/services/admin_service.py` — new
 
-```python
-
-class AdminService:
-    @staticmethod
-    async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
-        repo = AdminRepository(db)
-        data = await repo.get_analytics()
-        return AdminAnalyticsResponse(**data)
-```
-
 ---
 
 ## 4. Routers
@@ -152,22 +86,6 @@ class AdminService:
 ### `app/api/v1/urgent.py` — add status endpoint
 
 ### `app/api/v1/admin.py` — new
-
-```python
-# ── Reports ────────────────────────────────────────────────────────────────────
-
-# ── Users ──────────────────────────────────────────────────────────────────────
-
-# ── Analytics ──────────────────────────────────────────────────────────────────
-
-@router.get("/analytics", response_model=AdminAnalyticsResponse)
-async def get_analytics(
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-):
-    """Stats for admin dashboard — totals, ratios, weekly booking graph data."""
-    return await AdminService.get_analytics(db=db)
-```
 
 ### Register in `app/api/v1/router.py`
 
