@@ -5,6 +5,8 @@ from sqlalchemy import update
 from app.db.session import AsyncSessionLocal
 from app.models.booking_model import Booking, BookingStatus
 from app.repositories.booking_repository import BookingRepository
+from app.repositories.user_repository import UserRepository
+from app.services.notification_service import NotificationService
 
 
 async def send_booking_followup_notifications():
@@ -18,30 +20,47 @@ async def send_booking_followup_notifications():
     window is simpler and safe.
     """
     async with AsyncSessionLocal() as db:
-        repo = BookingRepository(db)
-        bookings = await repo.get_initiated_ready_for_followup()
-        logger.info("send_booking_followup_notifications")
-        if not bookings:
+        booking_repo = BookingRepository(db)
+
+        bookings_data = await booking_repo.get_initiated_ready_for_followup()
+
+        if not bookings_data:
+            logger.debug(
+                "Booking followup job: No bookings ready for followup")
             return
 
         logger.info(
-            f"Booking followup job: {len(bookings)} bookings ready for FCM")
+            f"Booking followup job: {len(bookings_data)} bookings ready for FCM")
 
-        for booking in bookings:
-            # Status guard: only send if still INITIATED
-            # (could have been confirmed/cancelled in the last 5 mins)
-            if booking.status != BookingStatus.INITIATED:
-                continue
+        for data in bookings_data:
 
-            logger.info(
-                f"Sending 2hr follow-up FCM for booking {booking.id} "
-                f"to seeker {booking.seeker_id}"
+            await NotificationService.send_booking_followup(data=data, attempt=1)
+            # Note: send_booking_followup is NOT async (messaging.send is sync)
+            # If it were async, use: await NotificationService.send_booking_followup(...)
+
+
+async def send_completion_prompts():
+    """
+    Runs every hour. Finds IN_PROGRESS bookings past work_schedule
+    and sends the seeker a completion prompt FCM.
+    """
+    async with AsyncSessionLocal() as db:
+        booking_repo = BookingRepository(db)
+
+        bookings_data = await booking_repo.get_in_progress_past_work_schedule()
+
+        if not bookings_data:
+            logger.debug(
+                "Completion prompt job: No bookings past work schedule")
+            return
+
+        logger.info(
+            f"Completion prompt job: {len(bookings_data)} bookings ready to notify")
+
+        for data in bookings_data:
+            await NotificationService.send_completion_prompt(
+                data=data
             )
-            # TODO: await NotificationService.send_booking_followup(
-            #     seeker_id=booking.seeker_id,
-            #     booking_id=booking.id,
-            #     attempt=1
-            # )
 
 
 async def expire_stale_bookings():
@@ -68,21 +87,6 @@ async def expire_stale_bookings():
         if expired_count:
             logger.info(
                 f"Nightly cleanup: expired {expired_count} stale bookings")
-
-
-async def send_completion_prompts():
-    """
-    Runs every hour. Finds IN_PROGRESS bookings past work_schedule
-    and sends the seeker a completion prompt FCM.
-    """
-    async with AsyncSessionLocal() as db:
-        repo = BookingRepository(db)
-        bookings = await repo.get_in_progress_past_work_schedule()
-
-        for booking in bookings:
-            # TODO: await NotificationService.send_completion_prompt(booking.seeker_id, booking.id)
-            logger.info(
-                f"[stub] Completion prompt sent for booking {booking.id}")
 
 
 async def auto_complete_stale_bookings():

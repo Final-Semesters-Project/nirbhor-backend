@@ -19,6 +19,7 @@ class RegistrationBaseSchema(BaseModel):
         ...,
         description="Password must be at least 8 characters"
     )
+    preferred_lang: str = Field(..., description="en or bn")
 
     @field_validator("phone", mode="after")
     @classmethod

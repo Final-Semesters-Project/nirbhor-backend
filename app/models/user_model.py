@@ -54,6 +54,12 @@ class User(UUIDMixin, TimestampMixin, Base):
         # index=True
     )
 
+    preferred_lang: Mapped[str] = mapped_column(
+        String(2),
+        default="bn",   # default Bangla for your user base
+        nullable=False,
+    )
+
     firebase_uid: Mapped[str | None] = mapped_column(
         String,
         unique=True,

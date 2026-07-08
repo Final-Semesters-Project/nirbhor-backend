@@ -39,7 +39,11 @@ async def lifespan(app: FastAPI):
     )  # nightly
 
     scheduler.start()
-    logger.info("APScheduler started successfully inside lifespan startup.")
+    logger.success("APScheduler started successfully inside lifespan startup.")
+
+    # initialize firebase
+    from app.core.firebase import init_firebase
+    init_firebase()
 
     # runs on shutdown, after all requests
     yield

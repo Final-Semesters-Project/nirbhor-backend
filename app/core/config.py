@@ -24,6 +24,10 @@ class Settings(BaseSettings):
     APP_ENV: str
     STAGING_API_KEY: SecretStr | None = None
 
+    FIREBASE_CREDENTIALS_PATH: str = "serviceAccountKey.json"
+
+    FIREBASE_CREDENTIALS_JSON: str | None = None
+
     # Splits the cors origins string and converts into a list
     CORS_ORIGINS: Any = []
 
