@@ -26,28 +26,28 @@ class UserRepository(BaseRepository[User]):
         )
         # no flush needed — will be committed by the calling service
 
-    async def get_fcm_token_and_provider_name(self, seeker_id: UUID, provider_id: UUID):
-        from sqlalchemy.orm import aliased
-        from sqlalchemy import select
+    # async def get_fcm_token_and_provider_name(self, seeker_id: UUID, provider_id: UUID):
+    #     from sqlalchemy.orm import aliased
+    #     from sqlalchemy import select
 
-        SeekerUser = aliased(User, name="seeker_user")
-        ProviderUser = aliased(User, name="provider_user")
+    #     SeekerUser = aliased(User, name="seeker_user")
+    #     ProviderUser = aliased(User, name="provider_user")
 
-        result = await self.db.execute(
-            select(FCMToken, SeekerUser,
-                   ProviderUser.name_en, ProviderUser.name_bn)
-            .join(SeekerUser, FCMToken.user_id == seeker_id)
-            .join(ProviderUser, FCMToken.user_id == ProviderUser.id)
-        )
-        row = result.first()
-        if not row:
-            return None
+    #     result = await self.db.execute(
+    #         select(FCMToken, SeekerUser,
+    #                ProviderUser.name_en, ProviderUser.name_bn)
+    #         .join(SeekerUser, FCMToken.user_id == seeker_id)
+    #         .join(ProviderUser, FCMToken.user_id == ProviderUser.id)
+    #     )
+    #     row = result.first()
+    #     if not row:
+    #         return None
 
-        fcm_token, seeker, provider = row
-        # Attach for easy access in service layer
-        fcm_token._seeker = seeker
-        fcm_token._provider = provider
-        return fcm_token
+    #     fcm_token, seeker, provider = row
+    #     # Attach for easy access in service layer
+    #     fcm_token._seeker = seeker
+    #     fcm_token._provider = provider
+    #     return fcm_token
 
 
 """

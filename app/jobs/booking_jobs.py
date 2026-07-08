@@ -33,10 +33,7 @@ async def send_booking_followup_notifications():
             f"Booking followup job: {len(bookings_data)} bookings ready for FCM")
 
         for data in bookings_data:
-
             await NotificationService.send_booking_followup(data=data, attempt=1)
-            # Note: send_booking_followup is NOT async (messaging.send is sync)
-            # If it were async, use: await NotificationService.send_booking_followup(...)
 
 
 async def send_completion_prompts():

@@ -1,3 +1,4 @@
+import asyncio
 from uuid import UUID
 from firebase_admin import messaging
 from loguru import logger
@@ -78,6 +79,14 @@ class NotificationService:
             )
             return
 
+        # Pick the correct language for the visible notification text
+        if data.preferred_lang == "bn":
+            title = "বুকিং আপডেট"
+            body = f"আপনি কি {data.provider_name_bn} কে নিয়োগ করেছেন?"
+        else:
+            title = "Booking Update"
+            body = f"Did you hire {data.provider_name_en}?"
+
         message = messaging.Message(
             token=data.fcm_token,
             data={
@@ -94,13 +103,23 @@ class NotificationService:
             # Minimal notification block as iOS background fallback
             # Flutter overrides this when app is in foreground/background
             notification=messaging.Notification(
-                title="Booking Update",
-                body=f"Did you hire {data.provider_name_en}?",
+                title=title,
+                body=body,
             ),
+            android=messaging.AndroidConfig(priority="high"),
+            apns=messaging.APNSConfig(headers={"apns-priority": "10"}),
         )
 
         try:
-            messaging.send(message)
+            # Run the blocking network call in a thread pool
+            # This releases the event loop while waiting for FCM response
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,                    # uses default ThreadPoolExecutor
+                messaging.send,          # the blocking function
+                message                  # its argument
+            )
+            # messaging.send(message)
             logger.info(
                 f"Booking followup FCM sent: booking={data.booking_id} attempt={attempt} seeker={data.seeker_id}"
             )
@@ -126,6 +145,14 @@ class NotificationService:
             )
             return
 
+        # Pick the correct language for the visible notification text
+        if data.preferred_lang == "bn":
+            title = "কাজ সম্পন্ন?"
+            body = f"আপনার কি {data.provider_name_bn} এর সাথে কাজ সম্পন্ন হয়েছ? রিভিউ দেয়ার জন্য এখানে ট্যাপ করুন।"
+        else:
+            title = "Job Done?"
+            body = f"Was your job with {data.provider_name_en} completed? Tap to review!"
+
         message = messaging.Message(
             token=data.fcm_token,
             data={
@@ -138,14 +165,23 @@ class NotificationService:
                 "preferred_lang": data.preferred_lang,
             },
             notification=messaging.Notification(
-                title="Job Done?",
-                body=f"Was your job with {data.provider_name_en} completed? Tap to review!",
+                title=title,
+                body=body,
             ),
             android=messaging.AndroidConfig(priority="normal"),
+            apns=messaging.APNSConfig(headers={"apns-priority": "5"}),
         )
 
         try:
-            messaging.send(message)
+            # Run the blocking network call in a thread pool
+            # This releases the event loop while waiting for FCM response
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,                    # uses default ThreadPoolExecutor
+                messaging.send,          # the blocking function
+                message                  # its argument
+            )
+            # messaging.send(message)
             logger.info(
                 f"Completion prompt FCM sent: booking={data.booking_id} seeker={data.seeker_id}"
             )
@@ -154,24 +190,39 @@ class NotificationService:
         except Exception as e:
             logger.error(f"FCM completion prompt failed: {e}")
 
-    # TODO: Not used in urgent broadcast service/jobs
     @staticmethod
-    async def send_broadcast_expired(seeker_fcm_token: str) -> None:
+    async def send_broadcast_expired(seeker_fcm_token: str, preferred_lang: str) -> None:
         """'No one responded. Please try a manual search.'"""
         if not seeker_fcm_token:
             return
 
+        # Pick the correct language for the visible notification text
+        if preferred_lang == "bn":
+            title = "কোনো সাড়া নেই"
+            body = "কেউ সাড়া দেননি। ম্যানুয়াল অনুসন্ধান করুন।"
+        else:
+            title = "No Response"
+            body = "No one responded. Try manual search."
+
         message = messaging.Message(
             token=seeker_fcm_token,
             data={"type": "BROADCAST_EXPIRED"},
+
             notification=messaging.Notification(
-                title="কোনো সাড়া নেই / No Response",
-                body="কেউ সাড়া দেননি। ম্যানুয়াল অনুসন্ধান করুন। / No one responded. Try manual search.",
+                title=title,
+                body=body,
             ),
         )
 
         try:
-            messaging.send(message)
+            # Run the blocking network call in a thread pool
+            # This releases the event loop while waiting for FCM response
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(
+                None,                    # uses default ThreadPoolExecutor
+                messaging.send,          # the blocking function
+                message                  # its argument
+            )
         except Exception as e:
             logger.error(f"FCM broadcast expired notification failed: {e}")
 

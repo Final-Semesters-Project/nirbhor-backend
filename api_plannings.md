@@ -88,8 +88,7 @@ FIREBASE_CREDENTIALS_JSON: str | None = None
 
 **Remaining before submission:**
 
-1. **Wire FCM into job stubs** — replace `# TODO` comments in
-   `booking_jobs.py` and `urgent_jobs.py` with actual
+1. **Wire FCM into job stubs** — replace `# TODO` comments in `urgent_jobs.py` with actual
    `NotificationService` calls. You need to fetch the user's FCM token
    from `fcm_tokens` table before calling each notification method.
 
