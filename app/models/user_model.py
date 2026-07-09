@@ -1,6 +1,6 @@
 from app.db.base import Base
 from sqlalchemy.orm import Mapped, mapped_column, relationship
-from sqlalchemy import String, Boolean
+from sqlalchemy import Index, String, Boolean
 import enum
 from sqlalchemy import Enum as sqlEnum, DateTime
 from app.models.mixins.timestamp_mixin import TimestampMixin
@@ -52,6 +52,12 @@ class User(UUIDMixin, TimestampMixin, Base):
         DateTime(timezone=True),
         nullable=True,
         # index=True
+    )
+
+    preferred_lang: Mapped[str] = mapped_column(
+        String(2),
+        default="bn",   # default Bangla for your user base
+        nullable=False,
     )
 
     firebase_uid: Mapped[str | None] = mapped_column(
@@ -130,4 +136,8 @@ class User(UUIDMixin, TimestampMixin, Base):
     reviews_received: Mapped[list["Review"]] = relationship(  # type: ignore
         back_populates="reviewee",
         foreign_keys="Review.reviewee_id",
+    )
+
+    __table_args__ = (
+        Index("ix_users_created_at", "created_at", "id"),
     )

@@ -31,6 +31,8 @@ pip install -r requirements.txt
 pip freeze > requirements.txt
 ```
 
+- Add ENV variables to `.env` and firebase credentials to `serviceAccountKey.json`
+
 ## Run server with docker
 ```
 docker compose -f docker-compose.dev.yml up --build

@@ -1,6 +1,8 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.models.fcm_token import FCMToken
 from app.models.user_model import User
+from app.models.user_session_model import UserSession
 from app.repositories.base_repository import BaseRepository
 from uuid import UUID
 from datetime import datetime
@@ -24,6 +26,16 @@ class UserRepository(BaseRepository[User]):
             .values(last_active_at=timestamp)
         )
         # no flush needed — will be committed by the calling service
+
+    async def delete_session_by_refresh_token(self, refresh_token: str) -> bool:
+        """Deletes the session row matching this refresh token. Returns True if found."""
+        from sqlalchemy import delete
+        result = await self.db.execute(
+            delete(UserSession)
+            .where(UserSession.refresh_token == refresh_token)
+            .returning(UserSession.id)
+        )
+        return result.first() is not None
 
 
 """

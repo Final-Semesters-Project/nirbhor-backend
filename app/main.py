@@ -38,8 +38,16 @@ async def lifespan(app: FastAPI):
         "cron", hour=1, minute=0
     )  # nightly
 
+    from app.core.cache import TokenBlockListService
+
+    scheduler.add_job(TokenBlockListService.cleanup, "interval", minutes=30)
+
     scheduler.start()
-    logger.info("APScheduler started successfully inside lifespan startup.")
+    logger.success("APScheduler started successfully inside lifespan startup.")
+
+    # initialize firebase
+    from app.core.firebase import init_firebase
+    init_firebase()
 
     # runs on shutdown, after all requests
     yield

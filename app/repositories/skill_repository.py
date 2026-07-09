@@ -5,7 +5,7 @@ from app.models.provider_skill_link_model import ProviderSkillLink
 from app.repositories.base_repository import BaseRepository
 from app.models.skill_model import Skill
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select, or_
+from sqlalchemy import Row, select, or_
 
 
 class SkillRepository(BaseRepository[Skill]):
@@ -51,3 +51,11 @@ class SkillRepository(BaseRepository[Skill]):
             .order_by(Skill.id)
         )
         return result.scalars().all()
+
+    # Fetch skill names — one query, done before anything else
+    async def get_skill_names(self, skill_id: int) -> Row[tuple[str, str]] | None:
+        skill_result = await self.db.execute(
+            select(Skill.name_en, Skill.name_bn).where(
+                Skill.id == skill_id)
+        )
+        return skill_result.first()

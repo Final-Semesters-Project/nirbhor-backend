@@ -88,6 +88,9 @@ MESSAGES = {
         "admin_only": "Admin access required.",
         "rejection_reason_required": "Rejection reason is required.",
         "verification_locked": "Verification is locked. Can not update.",
+        "can_not_dismiss_report": "Cannot dismiss a report where action has already been taken.",
+        "can_not_set_under_investigation": "Can only investigate new, pending reports now.",
+        "logout_successful": "Logout successful.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -172,6 +175,9 @@ MESSAGES = {
         "admin_only": "শুধুমাত্র অ্যাডমিন অ্যাক্সেস প্রয়োজন।",
         "rejection_reason_required": "প্রত্যাখ্যানের কারণ প্রদান করুন।",
         "verification_locked": "যাচাইকরণ লক হয়েছে। আপডেট করা যায়নি।",
+        "can_not_dismiss_report": "এমন একটি রিপোর্ট খারিজ করা যাবে না যেখানে ইতিমধ্যে ব্যবস্থা নেওয়া হয়েছে৷",
+        "can_not_set_under_investigation": "এখন শুধুমাত্র নতুন, পেন্ডিং রিপোর্ট তদন্ত করতে পারেন।",
+        "logout_successful": "লগআউট সফল হয়েছে।",
     }
 }
 

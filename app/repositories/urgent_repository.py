@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
 from sqlalchemy import select
@@ -5,11 +6,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.models.fcm_token import FCMToken
 from app.models.provider_profile_model import ProviderProfile
+from app.models.provider_skill_link_model import ProviderSkillLink
+from app.models.skill_model import Skill
 from app.models.urgent_broadcast_model import BroadcastStatus, UrgentBroadcast
 from geoalchemy2.functions import ST_DWithin, ST_MakePoint, ST_SetSRID
 from geoalchemy2 import Geography
 
 from app.models.user_model import User
+
+
+@dataclass
+class BroadcastClaimNotificationData:
+    """Everything needed to notify the seeker after a successful claim."""
+    seeker_fcm_token: str | None
+    seeker_preferred_lang: str
+    provider_name_en: str
+    provider_name_bn: str
 
 
 class UrgentBroadcastRepository:
@@ -35,11 +47,12 @@ class UrgentBroadcastRepository:
         await self.db.flush()
         return broadcast
 
-    async def get_nearby_fcm_tokens(
+    async def get_nearby_fcm_tokens_to_create_urgent_broadcast_notification(
         self,
         latitude: float,
         longitude: float,
-        radius_km: int = 3,
+        skill_id: int,
+        radius_km: int = 3
     ) -> list[str]:
         """
         Find FCM tokens for providers within radius_km who have smartphones.
@@ -50,7 +63,17 @@ class UrgentBroadcastRepository:
 
         result = await self.db.execute(
             select(FCMToken.token)
+            # FCMToken → ProviderProfile (same user_id)
             .join(ProviderProfile, FCMToken.user_id == ProviderProfile.user_id)
+            # ProviderProfile → User (to check is_active)
+            .join(User, User.id == ProviderProfile.user_id)
+            # ProviderProfile → ProviderSkillLink (filter by skill)
+            .join(
+                ProviderSkillLink,
+                ProviderSkillLink.provider_id == ProviderProfile.user_id,
+            )
+            # only providers with this skill
+            .where(ProviderSkillLink.skill_id == skill_id)
             .where(ProviderProfile.has_smartphone == True)
             .where(ProviderProfile.is_available == True)
             .where(User.is_active == True)
@@ -68,10 +91,12 @@ class UrgentBroadcastRepository:
                     ProviderProfile.working_radius_km * 1000
                 )
             )
+            # Deduplicate — a provider with multiple skills would appear multiple times
+            .distinct(FCMToken.token)
         )
         return [row.token for row in result.all()]
 
-    async def claim_broadcast(
+    async def claim_a_broadcast_by_provider(
         self,
         broadcast_id: UUID,
         provider_id: UUID,
@@ -100,18 +125,50 @@ class UrgentBroadcastRepository:
         broadcast.claimed_by_provider_id = provider_id
         await self.db.flush()
 
-        # Fetch seeker details to return to the claiming provider
-        # seeker_result = await self.db.execute(
-        #     select(User.name_en, User.phone_en)
-        #     .where(User.id == broadcast.seeker_id)
-        # )
-        # seeker_row = seeker_result.first()
-        # seeker_name = seeker_row.name_en if seeker_row else "—"
-        # seeker_phone = seeker_row.phone_en if seeker_row else None
-
-        # return broadcast, seeker_name, seeker_phone
-
         return broadcast
+
+    async def get_claim_notification_data(
+        self,
+        seeker_id: UUID,
+        provider_id: UUID,
+    ) -> BroadcastClaimNotificationData | None:
+        """
+        Fetch seeker FCM token + provider name in one query.
+        Called only after a successful claim — not on 409 or 404 paths.
+        """
+        SeekerUser = aliased(User, name="seeker_user")
+        ProviderUser = aliased(User, name="provider_user")
+
+        result = await self.db.execute(
+            select(
+                FCMToken.token.label("seeker_fcm_token"),
+                SeekerUser.preferred_lang,
+                ProviderUser.name_en.label("provider_name_en"),
+                ProviderUser.name_bn.label("provider_name_bn"),
+            )
+            # Get seeker user row
+            .join(SeekerUser,   SeekerUser.id == seeker_id)
+            # Get provider user row
+            .join(ProviderUser, ProviderUser.id == provider_id)
+            # LEFT JOIN FCMToken — seeker might not have a token registered
+            .outerjoin(
+                FCMToken,
+                (FCMToken.user_id == seeker_id) & FCMToken.token.is_not(None)
+            )
+            # Use a literal select_from so SQLAlchemy has a base table
+            .select_from(SeekerUser)
+        )
+
+        row = result.first()
+        if not row:
+            return None
+
+        return BroadcastClaimNotificationData(
+            seeker_fcm_token=row.seeker_fcm_token,
+            seeker_preferred_lang=row.preferred_lang or "bn",
+            provider_name_en=row.provider_name_en,
+            provider_name_bn=row.provider_name_bn or row.provider_name_en,
+        )
 
     async def get_broadcast_by_id(self, broadcast_id: UUID) -> UrgentBroadcast | None:
         """Fetch a broadcast for the detail view."""
@@ -121,53 +178,45 @@ class UrgentBroadcastRepository:
         )
         return result.scalar_one_or_none()
 
-    async def expire_stale_broadcasts(self) -> list[UUID]:
+    async def expire_stale_broadcasts(self) -> list[tuple[str, str]]:
         """
         Mark all BROADCASTING rows past expires_at as EXPIRED.
-        Returns list of seeker_ids to notify.
+        Returns list of (fcm_token, preferred_lang) tuples for expired seekers.
         Called by APScheduler every minute.
+
+        Why two statements instead of CTE?
+        SQLAlchemy 2.0 async does not support UPDATE...RETURNING chained as CTE
+        in the same select. Two statements in the same transaction is correct,
+        readable, and still atomic — no other transaction sees partial state.
         """
         from sqlalchemy import update
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc)
 
-        # Fetch seeker_ids before updating so we can notify them
-        # stale = await self.db.execute(
-        #     select(UrgentBroadcast.id, UrgentBroadcast.seeker_id)
-        #     .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
-        #     .where(UrgentBroadcast.expires_at < now)
-        # )
-
-        query = (
+        # Step 1: Update and get seeker_ids of expired broadcasts
+        update_result = await self.db.execute(
             update(UrgentBroadcast)
             .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
             .where(UrgentBroadcast.expires_at < now)
-            # <-- Sets status to EXPIRED in each row in single query
             .values(status=BroadcastStatus.EXPIRED)
-            # <-- Asks Postgres to return values of updated rows
             .returning(UrgentBroadcast.seeker_id)
         )
-        # rows = stale.all()
+        seeker_ids = [row.seeker_id for row in update_result.all()]
 
-        # if not rows:
-        #     return []
+        if not seeker_ids:
+            return []
 
-        # stale_ids = [r.id for r in rows]
-        # seeker_ids = [r.seeker_id for r in rows]
+        # Step 2: Fetch FCM tokens + language for those seekers in one query
+        token_result = await self.db.execute(
+            select(FCMToken.token, User.preferred_lang)
+            .join(User, FCMToken.user_id == User.id)
+            .where(FCMToken.user_id.in_(seeker_ids))
+            .where(FCMToken.token.is_not(None))
+        )
 
-        # await self.db.execute(
-        #     update(UrgentBroadcast)
-        #     .where(UrgentBroadcast.id.in_(stale_ids))
-        #     .values(status=BroadcastStatus.EXPIRED)
-        # )
-
-        # return seeker_ids
-
-        result = await self.db.execute(query)
-        seeker_ids = [row[0] for row in result.all()]
-
-        return seeker_ids
+        # result.all() returns list of Row objects — unpack as tuples
+        return [(row.token, row.preferred_lang or "bn") for row in token_result.all()]
 
     async def get_broadcast_status(
         self, broadcast_id: UUID

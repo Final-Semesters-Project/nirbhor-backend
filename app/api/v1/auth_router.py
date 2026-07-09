@@ -1,11 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.core.exceptions import DomainIntegrityError
 from app.core.i18n import MESSAGES, get_lang, t, make_validated_body
 from app.db.session import get_db_session
+from app.models.user_model import User
 from app.schemas.auth_schema import (
+    LogoutSchema,
     SeekerRegisterSchema,
     ProviderRegisterSchema,
     AuthResponseSchema,
@@ -69,3 +72,43 @@ async def password_login(
     lang: str = Depends(get_lang),
 ):
     return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
+
+
+@router.post("/fcm/token", status_code=201)
+async def register_fcm_token(
+    token: str,
+    device_info: str | None = Depends(get_device_info),   # ANDROID, IOS, WEB
+    current_user: User = Depends(get_current_seeker or get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Called by Flutter/React after login to register the device FCM token."""
+    return await AuthService.register_fcm_token(
+        user_id=current_user.id,
+        token=token,
+        device_type=device_info,
+        db=db,
+    )
+
+
+@router.post("/logout", status_code=200)
+async def logout(
+    data: LogoutSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+    authorization: str = Header(...),
+):
+    """
+    Logs out the current device:
+    - Deletes the refresh token session (other devices stay logged in)
+    - Blocklists the current access token until it naturally expires
+    - Optionally removes this device's FCM token
+    """
+    access_token = authorization.replace("Bearer ", "")
+    return await AuthService.logout(
+        data=data,
+        access_token=access_token,
+        user_id=current_user.id,
+        db=db,
+        lang=lang,
+    )

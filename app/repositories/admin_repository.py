@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 from typing import Sequence
 from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
 from app.models.user_model import User, Role
@@ -113,3 +114,176 @@ class AdminRepository(BaseRepository):
         provider_profile.verification_rejection_reason = reason
         await self.db.flush()
         return provider_profile
+
+    # ── Reports ───────────────────────────────────────────────────────────────
+
+    async def get_reports(self, status_filter: str | None = None) -> Sequence:
+        Reporter = aliased(User, name="reporter")
+        Reported = aliased(User, name="reported")
+
+        stmt = (
+            select(UserReport, Reporter, Reported)
+            .join(Reporter, UserReport.reporter_id == Reporter.id)
+            .join(Reported, UserReport.reported_user_id == Reported.id)
+            .order_by(UserReport.created_at.desc())
+        )
+        if status_filter:
+            stmt = stmt.where(UserReport.status == status_filter)
+
+        result = await self.db.execute(stmt)
+        return result.all()
+
+    async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
+        result = await self.db.execute(
+            select(UserReport).where(UserReport.id == report_id)
+        )
+        return result.scalar_one_or_none()
+
+    async def update_report_status(
+        self,
+        report: UserReport,
+        new_status: ReportStatus,
+    ) -> UserReport:
+        report.status = new_status
+        await self.db.flush()
+        return report
+
+    async def suspend_user(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        if user.role == Role.ADMIN:
+            return None
+
+        user.is_active = False
+        await self.db.flush()
+        return user
+
+    async def get_users(
+        self,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> Sequence[User]:
+        stmt = select(User).order_by(User.created_at.desc())
+        if role_filter:
+            stmt = stmt.where(User.role == role_filter)
+        if is_active_filter is not None:
+            stmt = stmt.where(User.is_active == is_active_filter)
+        result = await self.db.execute(stmt)
+        return result.scalars().all()
+
+    async def get_user_detail(self, user_id: UUID) -> dict | None:
+        user = await self.db.get(User, user_id)
+        if not user:
+            return None
+
+        total_bookings = await self.db.scalar(
+            select(func.count())
+            .select_from(Booking)
+            .where(
+                (Booking.seeker_id == user_id) | (
+                    Booking.provider_id == user_id)
+            )
+        )
+
+        profile = None
+        if user.role == Role.PROVIDER:
+            profile = await self.db.get(ProviderProfile, user_id)
+
+        return {
+            "user": user,
+            "total_bookings": total_bookings or 0,
+            "profile": profile,
+        }
+
+    async def toggle_user_active(self, user_id: UUID) -> User | None:
+        user = await self.db.get(User, user_id)
+
+        if user is None:
+            return None
+
+        user.is_active = not user.is_active
+        await self.db.flush()
+        return user
+
+        # ── Analytics ─────────────────────────────────────────────────────────────
+
+    async def get_analytics(self) -> dict:
+        now = datetime.now(timezone.utc)
+
+        user_counts_result = await self.db.execute(
+            select(
+                func.count().label("total_users"),
+                func.count(
+                    case((User.role == Role.PROVIDER, 1))
+                ).label("total_providers"),
+                func.count(
+                    case((User.role == Role.SEEKER, 1))
+                ).label("total_seekers"),
+                func.count(
+                    case((
+                        (User.role == Role.PROVIDER) &
+                        (User.last_active_at >= now - timedelta(days=30)),
+                        1
+                    ))
+                ).label("active_providers_month"),
+            ).select_from(User)
+        )
+        user_counts = user_counts_result.mappings().first()
+
+        # total_users = await self.db.scalar(select(func.count()).select_from(User))
+        total_bookings = await self.db.scalar(select(func.count()).select_from(Booking))
+        avg_rating = await self.db.scalar(
+            select(func.avg(ProviderProfile.average_rating))
+            .where(ProviderProfile.average_rating.is_not(None))
+        )
+        # seeker_count = await self.db.scalar(
+        #     select(func.count()).select_from(
+        #         User).where(User.role == Role.SEEKER)
+        # )
+        # provider_count = await self.db.scalar(
+        #     select(func.count()).select_from(
+        #         User).where(User.role == Role.PROVIDER)
+        # )
+        # active_providers = await self.db.scalar(
+        #     select(func.count())
+        #     .select_from(User)
+        #     .where(User.role == Role.PROVIDER)
+        #     .where(User.last_active_at >= now - timedelta(days=30))
+        # )
+
+        # Bookings per week for last 8 weeks
+        # DATE_TRUNC groups timestamps into week buckets
+        from sqlalchemy import text
+        weekly_result = await self.db.execute(
+            select(
+                func.date_trunc("week", Booking.created_at).label(
+                    "week_start"),
+                func.count().label("count"),
+            )
+            .where(Booking.created_at >= now - timedelta(weeks=8))
+            .group_by(text("week_start"))
+            .order_by(text("week_start"))
+        )
+        bookings_per_week = [
+            {"week_start": r.week_start, "count": r.count}
+            for r in weekly_result.all()
+        ]
+
+        seeker_count = (user_counts or {}).get("total_seekers") or 0
+        provider_count = (user_counts or {}).get("total_providers") or 0
+        ratio = round(seeker_count / provider_count,
+                      2) if provider_count > 0 else None
+
+        return {
+            "total_users": (user_counts or {}).get("total_users") or 0,
+            "total_bookings": total_bookings or 0,
+            "average_provider_rating": round(float(avg_rating), 2) if avg_rating else None,
+            "active_providers_count": (user_counts or {}).get("active_providers_month") or 0,
+            "seeker_count": seeker_count,
+            "provider_count": provider_count,
+            "seeker_to_provider_ratio": ratio,
+            "bookings_per_week": bookings_per_week,
+        }

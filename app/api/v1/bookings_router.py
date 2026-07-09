@@ -1,11 +1,12 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
 from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.models.user_model import User
 from app.schemas.booking_schema import BookingInitiateResponse, BookingInitiateSchema, BookingListItem, BookingRespondFromNotificationSchema, LastInitiatedActiveBookingSchema, SingleBookingDetailResponse
+from app.schemas.pagination_schema import PageResponse
 from app.services.booking_service import BookingService
 from app.core.i18n import t
 
@@ -33,8 +34,10 @@ async def initiate_booking(
     )
 
 
-@router.get("/provider/me", response_model=list[BookingListItem])
+@router.get("/provider/me", response_model=PageResponse[BookingListItem])
 async def provider_incoming_bookings(
+    page: int = 1,
+    page_size: int = 20,
     current_user: User = Depends(get_current_provider),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
@@ -44,6 +47,8 @@ async def provider_incoming_bookings(
         provider_id=current_user.id,
         db=db,
         lang=lang,
+        page=page,
+        page_size=page_size
     )
 
 
@@ -61,8 +66,10 @@ async def provider_completed_bookings(
     )
 
 
-@router.get("/seeker/me", response_model=list[BookingListItem])
+@router.get("/seeker/me", response_model=PageResponse[BookingListItem])
 async def seeker_booking_history(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
@@ -72,6 +79,8 @@ async def seeker_booking_history(
         seeker_id=current_user.id,
         db=db,
         lang=lang,
+        page=page,
+        page_size=page_size
     )
 
 
