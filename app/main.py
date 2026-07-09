@@ -38,6 +38,10 @@ async def lifespan(app: FastAPI):
         "cron", hour=1, minute=0
     )  # nightly
 
+    from app.core.cache import TokenBlockListService
+
+    scheduler.add_job(TokenBlockListService.cleanup, "interval", minutes=30)
+
     scheduler.start()
     logger.success("APScheduler started successfully inside lifespan startup.")
 

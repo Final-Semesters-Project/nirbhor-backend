@@ -22,17 +22,6 @@ Admin SDK is the correct approach.
 
 ### Step 2: Store the key securely
 
-For local development: place the file at the project root and reference it
-via an env variable. For Render.com production: paste the JSON content as an
-environment variable (not a file).
-
-```python
-# app/core/config.py — add these settings
-FIREBASE_CREDENTIALS_PATH: str = "serviceAccountKey.json"
-# OR for production (JSON string in env var):
-FIREBASE_CREDENTIALS_JSON: str | None = None
-```
-
 ### Step 3: Install the SDK
 
 ### Step 4: Initialize Firebase once at startup
@@ -102,114 +91,6 @@ async def register_fcm_token(
 ``` 
 
 # =============================== LOGOUT ==================================
-```python
-# app/schemas/auth_schema.py
-
-from pydantic import BaseModel
-
-class LogoutSchema(BaseModel):
-    refresh_token: str
-    fcm_token: str | None = None   # optional: also clear this device's FCM token
-```
-
-```python
-# app/repositories/user_repository.py — add this method
-
-async def delete_session_by_refresh_token(self, refresh_token: str) -> bool:
-    """Deletes the session row matching this refresh token. Returns True if found."""
-    from sqlalchemy import delete
-    result = await self.db.execute(
-        delete(UserSession)
-        .where(UserSession.refresh_token == refresh_token)
-        .returning(UserSession.id)
-    )
-    return result.first() is not None
-```
-
-```python
-# app/services/auth_service.py
-
-@staticmethod
-async def logout(
-    data: LogoutSchema,
-    access_token: str,
-    user_id: UUID,
-    db: AsyncSession,
-    lang: str,
-) -> dict:
-    user_repo = UserRepository(db)
-
-    # 1. Delete the refresh token session row — this is the durable logout
-    deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
-    if not deleted:
-        # Not fatal — token might already be gone (e.g. double logout tap)
-        logger.warning(f"Logout: refresh token not found for user {user_id}")
-
-    # 2. Blocklist the current access token until it naturally expires
-    # Access tokens are short-lived (1hr), so the TTL cache entry only
-    # needs to live until the token's own expiry — no need to track forever.
-    from app.core.security import decode_access_token
-    from app.core.cache import ttl_cache  # your Redis/TTL cache client
-
-    payload = decode_access_token(access_token)
-    remaining_seconds = max(0, payload["exp"] - int(datetime.now(timezone.utc).timestamp()))
-    if remaining_seconds > 0:
-        await ttl_cache.set(
-            key=f"blocklist:{access_token}",
-            value="1",
-            ttl_seconds=remaining_seconds,
-        )
-
-    # 3. Optionally remove this device's FCM token so a stale session
-    # can't receive notifications meant for whoever logs in next
-    if data.fcm_token:
-        from sqlalchemy import delete
-        from app.models.fcm_token import FCMToken
-        await db.execute(
-            delete(FCMToken)
-            .where(FCMToken.user_id == user_id)
-            .where(FCMToken.token == data.fcm_token)
-        )
-
-    await db.commit()
-    logger.info(f"User {user_id} logged out")
-
-    return {"message": t("logout_successful", lang)}
-```
-
-```python
-# app/api/v1/auth.py
-
-@router.post("/logout", status_code=200)
-async def logout(
-    data: LogoutSchema,
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-    lang: str = Depends(get_lang),
-    authorization: str = Header(...),
-):
-    """
-    Logs out the current device:
-    - Deletes the refresh token session (other devices stay logged in)
-    - Blocklists the current access token until it naturally expires
-    - Optionally removes this device's FCM token
-    """
-    access_token = authorization.replace("Bearer ", "")
-    return await AuthService.logout(
-        data=data,
-        access_token=access_token,
-        user_id=current_user.id,
-        db=db,
-        lang=lang,
-    )
-```
-
-```python
-# In your get_current_user dependency, after decoding the token
-if await ttl_cache.exists(f"blocklist:{token}"):
-    raise HTTPException(status_code=401, detail=t("token_revoked", lang))
-```
-
 
 # tests/test_booking_followup_job.py
 ```python

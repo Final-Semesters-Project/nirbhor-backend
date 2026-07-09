@@ -1,3 +1,16 @@
+"""
+For local development: place the file at the project root and reference it
+via an env variable. For Render.com production: paste the JSON content as an
+environment variable (not a file).
+
+```python
+# app/core/config.py — add these settings
+FIREBASE_CREDENTIALS_PATH: str = "serviceAccountKey.json"
+# OR for production (JSON string in env var):
+FIREBASE_CREDENTIALS_JSON: str | None = None
+```
+"""
+
 import json
 import firebase_admin
 from firebase_admin import credentials, messaging

@@ -3,6 +3,7 @@ from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
+from app.core.cache import UserCacheService
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.provider_profile_model import VerificationStatus
 from app.repositories.admin_repository import AdminRepository
@@ -282,6 +283,8 @@ class AdminService:
         logger.info(
             f"Admin toggled user {user_id} is_active → {user.is_active}"
         )
+
+        UserCacheService.invalidate(str(user_id))
         return {
             "user_id": user_id,
             "is_active": user.is_active,

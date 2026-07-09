@@ -172,7 +172,6 @@ class NotificationService:
         logger.info(f"Broadcast expired FCM sent: {seeker_fcm_token}")
 
     # ── Broadcast claimed (called from request handler) ───────────────────────
-    # TODO: Not used in urgent broadcast service/jobs
 
     @staticmethod
     async def send_broadcast_claimed_to_seeker(
@@ -214,7 +213,6 @@ class NotificationService:
             f"Broadcast for FCM token: {seeker_fcm_token} claimed by {provider_name_en}")
 
     # ── Urgent broadcast (called from request handler) ────────────────────────
-    # TODO: Not used in urgent broadcast service/job
 
     @staticmethod
     async def send_urgent_broadcast_to_providers(

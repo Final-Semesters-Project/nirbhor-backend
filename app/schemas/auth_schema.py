@@ -1,3 +1,4 @@
+from pydantic import BaseModel
 from datetime import datetime
 
 from loguru import logger
@@ -89,3 +90,8 @@ class RefreshTokenSchema(BaseModel):
         ...,
         description="Flutter: send refresh token in request body"
     )
+
+
+class LogoutSchema(BaseModel):
+    refresh_token: str
+    fcm_token: str | None = None   # optional: also clear this device's FCM token

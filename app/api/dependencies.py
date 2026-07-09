@@ -1,3 +1,4 @@
+from cachetools.func import ttl_cache
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
@@ -5,6 +6,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 # from app.core.cache_user import CacheService
 # from app.core.jwt import decode_access_token
+from app.core.cache import TokenBlockListService, UserCacheService
 from app.core.security import Security
 from app.db.session import get_db_session
 from app.models.user_model import User, Role
@@ -16,32 +18,45 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 async def get_current_user(
         request: Request,
         token: str = Depends(oauth2_scheme),
-        db: AsyncSession = Depends(get_db_session)) -> User | None:
+        db: AsyncSession = Depends(get_db_session)
+) -> User | None:
+
+    credentials_exception = HTTPException(
+        status_code=status.HTTP_401_UNAUTHORIZED,
+        detail="Invalid credentials",
+        headers={"WWW-Authenticate": "Bearer"},
+    )
     try:
+        if TokenBlockListService.is_blocked(token):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token has been revoked",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         # get the payload from token
         payload = Security.decode_access_token(token)
 
         if payload is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+            raise credentials_exception
 
         # get the uuid
         user_id = str(payload.get("sub"))
 
-        if user_id is None:
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Invalid token payload"
-            )
+        if not user_id:
+            raise credentials_exception
 
-        # TODO: get the user from cache
+        # get the user from cache
+        cached_user = UserCacheService.get(user_id)
+        if cached_user is not None:
+            if not cached_user.is_active:
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Account is suspended",
+                )
+            return cached_user
 
         # get the user from database if not in cache
-        # db.get() check the SQLAlchemy Identity Map first, So its faster
-        # user = await db.get(User, uuid.UUID(user_id))
         user = await db.get(User, user_id)
 
         if user is None:
@@ -57,23 +72,14 @@ async def get_current_user(
                 detail="Account is suspended"
             )
 
-        # TODO: create cache
-        # get the user from cache if exists
-        # cached_user = CacheService.get_user(username)
-        # if cached_user:
-        #     logger.success(f"User {username} found in cache")
-        #     return cached_user
+        # create cache
+        UserCacheService.set(user_id, user)
 
-        # TODO: set user in cache
-        # CacheService.set_user(user.username, user)
-        # logger.success(f"Setting user {user.username} in cache")
-        # Return user
         return user
+    except HTTPException:
+        raise
     except Exception:
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid credentials"
-        )
+        raise credentials_exception
 
 
 # ────────────── Role guards ──────────────
