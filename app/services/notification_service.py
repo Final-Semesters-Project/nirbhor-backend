@@ -175,7 +175,7 @@ class NotificationService:
     # TODO: Not used in urgent broadcast service/jobs
 
     @staticmethod
-    async def send_broadcast_claimed(
+    async def send_broadcast_claimed_to_seeker(
         seeker_fcm_token: str,
         provider_name_en: str,
         provider_name_bn: str,
@@ -217,10 +217,11 @@ class NotificationService:
     # TODO: Not used in urgent broadcast service/job
 
     @staticmethod
-    async def send_urgent_broadcast(
+    async def send_urgent_broadcast_to_providers(
         tokens: list[str],
         broadcast_id: UUID,
-        skill_name: str,
+        skill_name_en: str,
+        skill_name_bn: str,
     ) -> None:
         """
         Send high-priority FCM to all nearby providers simultaneously.
@@ -235,14 +236,15 @@ class NotificationService:
             data={
                 "type": "URGENT_BROADCAST",
                 "broadcast_id": str(broadcast_id),
-                "skill_name": skill_name,
+                "skill_name_en": skill_name_en,
+                "skill_name_bn": skill_name_bn,
             },
             notification=messaging.Notification(
-                title="জরুরি কাজ!" if True else "Urgent Job!",
+                title="জরুরি কাজ! / Urgent Job!",
                 # For MulticastMessage we can't personalize per-token language
                 # Use Bangla as default since majority of providers are Bangla-speaking
                 # The data payload lets the app override this if needed
-                body=f"কেউ {skill_name} চাইছেন। এখনই গ্রহণ করুন।",
+                body=f"{skill_name_bn} / {skill_name_en} দরকার। এখনই গ্রহণ করুন। / Needed urgently. Tap to accept.",
             ),
             android=messaging.AndroidConfig(priority="high"),
             apns=messaging.APNSConfig(
