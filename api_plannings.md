@@ -1,43 +1,4 @@
-**Next batch (core app flows):**
-- `GET /api/v1/urgent/broadcast/{id}/status` — seeker polls to see if broadcast was claimed (or use FCM)
 
-**After that (admin panel):**
-- `GET /api/v1/admin/dashboard` — counts summary
-- `GET /api/v1/admin/verifications` — pending verification list
-- `PATCH /api/v1/admin/verifications/{provider_id}` — approve/reject
-- `GET /api/v1/admin/reports` — flagged profiles
-- `PATCH /api/v1/admin/reports/{report_id}` — dismiss/suspend
-- `GET /api/v1/admin/users` — user list with filters
-- `PATCH /api/v1/admin/users/{user_id}/toggle` — enable/disable account
-- `GET /api/v1/admin/analytics` — stats + graphs
-
-# Nirbhor — Provider Public Profile, Broadcast Status, Admin APIs + FCM Setup
-
-## File Map
-
-```
-app/
-├── schemas/
-│   ├── provider_schema.py     ← add PublicProviderProfile response
-│   ├── admin_schema.py        ← new: all admin response schemas
-│   └── urgent_schema.py       ← add BroadcastStatusResponse
-├── repositories/
-│   ├── provider_repository.py ← add get_public_profile
-│   ├── admin_repository.py    ← new
-│   └── urgent_repository.py   ← add get_broadcast_status
-├── services/
-│   ├── provider_service.py    ← add get_public_profile
-│   ├── admin_service.py       ← new
-│   └── urgent_service.py      ← add get_broadcast_status
-├── api/v1/
-│   ├── providers.py           ← add GET /{provider_id}/public
-│   ├── admin.py               ← new
-│   └── urgent.py              ← add GET /{id}/status
-└── services/
-    └── notification_service.py ← FCM implementation
-```
-
----
 
 ## 5. FCM Setup — Firebase Admin SDK
 
@@ -82,21 +43,7 @@ FIREBASE_CREDENTIALS_JSON: str | None = None
 
 ### Step 7: Getting FCM tokens from Flutter/React
 
----
-
 ## What's Left After This
-
-**Remaining before submission:**
-
-1. **Wire FCM into job stubs** — replace `# TODO` comments in `urgent_jobs.py` with actual
-   `NotificationService` calls. You need to fetch the user's FCM token
-   from `fcm_tokens` table before calling each notification method.
-
-2. **Alembic migration** — run `alembic revision --autogenerate` to pick up
-   any model changes, then `alembic upgrade head`.
-
-3. **Test the admin endpoints** — create an admin user directly in the DB
-   (seed script) since there's no admin registration endpoint by design.
 
 4. **Render + NeonDB deployment** — set `FIREBASE_CREDENTIALS_JSON` as an
    env var on Render (paste the full JSON content, not the file path).
@@ -265,7 +212,7 @@ if await ttl_cache.exists(f"blocklist:{token}"):
 
 
 # tests/test_booking_followup_job.py
-
+```python
 import pytest
 from unittest.mock import AsyncMock, patch, MagicMock
 from uuid import uuid4
@@ -417,3 +364,4 @@ async def test_get_initiated_ready_for_followup_returns_correct_window(
     assert in_window.id in result_ids
     assert too_recent.id not in result_ids
     assert too_old.id not in result_ids
+```

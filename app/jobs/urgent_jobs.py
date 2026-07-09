@@ -16,17 +16,17 @@ async def expire_stale_broadcasts():
     """
     async with AsyncSessionLocal() as db:
         repo = UrgentBroadcastRepository(db)
-        stale_broadcasts_data = await repo.expire_stale_broadcasts()
+        expired_tokens = await repo.expire_stale_broadcasts()
 
-        if not stale_broadcasts_data:
+        if not expired_tokens:
             logger.debug(f"Urgent job: No stale broadcasts to expire")
             return
 
         await db.commit()
 
         logger.info(
-            f"Expired stale broadcasts, notifying {len(stale_broadcasts_data)} seekers")
+            f"Expired stale broadcasts, notifying {len(expired_tokens)} seekers")
 
-        for token, lang in stale_broadcasts_data:
+        for fcm_token, preferred_lang in expired_tokens:
             # send FCM to seeker
-            await NotificationService.send_broadcast_expired(seeker_fcm_token=token, preferred_lang=lang)
+            await NotificationService.send_broadcast_expired(seeker_fcm_token=fcm_token, preferred_lang=preferred_lang)
