@@ -121,37 +121,45 @@ class UrgentBroadcastRepository:
         )
         return result.scalar_one_or_none()
 
-    # TODO: check with claude later
-    async def expire_stale_broadcasts(self) -> list[str]:
+    async def expire_stale_broadcasts(self) -> list[tuple[str, str]]:
         """
         Mark all BROADCASTING rows past expires_at as EXPIRED.
-        Returns list of seeker_fcm_tokens to notify along with the seekers preferred language.
+        Returns list of (fcm_token, preferred_lang) tuples for expired seekers.
         Called by APScheduler every minute.
+
+        Why two statements instead of CTE?
+        SQLAlchemy 2.0 async does not support UPDATE...RETURNING chained as CTE
+        in the same select. Two statements in the same transaction is correct,
+        readable, and still atomic — no other transaction sees partial state.
         """
         from sqlalchemy import update
         from datetime import datetime, timezone
 
         now = datetime.now(timezone.utc)
 
-        update_stmt = (
+        # Step 1: Update and get seeker_ids of expired broadcasts
+        update_result = await self.db.execute(
             update(UrgentBroadcast)
             .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
             .where(UrgentBroadcast.expires_at < now)
             .values(status=BroadcastStatus.EXPIRED)
             .returning(UrgentBroadcast.seeker_id)
-            # Turns the update into an inline temporary table
-        ).cte("updated_broadcasts")
+        )
+        seeker_ids = [row.seeker_id for row in update_result.all()]
 
-        # join the update results directly to the FCM token table
-        query = (
+        if not seeker_ids:
+            return []
+
+        # Step 2: Fetch FCM tokens + language for those seekers in one query
+        token_result = await self.db.execute(
             select(FCMToken.token, User.preferred_lang)
-            .join(update_stmt, FCMToken.user_id == update_stmt.c.seeker_id)
-            .join(User, User.id == update_stmt.c.seeker_id)
+            .join(User, FCMToken.user_id == User.id)
+            .where(FCMToken.user_id.in_(seeker_ids))
             .where(FCMToken.token.is_not(None))
         )
 
-        result = await self.db.execute(query)
-        return list(result.scalars().all())
+        # result.all() returns list of Row objects — unpack as tuples
+        return [(row.token, row.preferred_lang or "bn") for row in token_result.all()]
 
     async def get_broadcast_status(
         self, broadcast_id: UUID
