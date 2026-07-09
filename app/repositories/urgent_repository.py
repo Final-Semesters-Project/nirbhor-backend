@@ -121,10 +121,11 @@ class UrgentBroadcastRepository:
         )
         return result.scalar_one_or_none()
 
-    async def expire_stale_broadcasts(self) -> list[UUID]:
+    # TODO: check with claude later
+    async def expire_stale_broadcasts(self) -> list[str]:
         """
         Mark all BROADCASTING rows past expires_at as EXPIRED.
-        Returns list of seeker_ids to notify.
+        Returns list of seeker_fcm_tokens to notify along with the seekers preferred language.
         Called by APScheduler every minute.
         """
         from sqlalchemy import update
@@ -132,42 +133,25 @@ class UrgentBroadcastRepository:
 
         now = datetime.now(timezone.utc)
 
-        # Fetch seeker_ids before updating so we can notify them
-        # stale = await self.db.execute(
-        #     select(UrgentBroadcast.id, UrgentBroadcast.seeker_id)
-        #     .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
-        #     .where(UrgentBroadcast.expires_at < now)
-        # )
-
-        query = (
+        update_stmt = (
             update(UrgentBroadcast)
             .where(UrgentBroadcast.status == BroadcastStatus.BROADCASTING)
             .where(UrgentBroadcast.expires_at < now)
-            # <-- Sets status to EXPIRED in each row in single query
             .values(status=BroadcastStatus.EXPIRED)
-            # <-- Asks Postgres to return values of updated rows
             .returning(UrgentBroadcast.seeker_id)
+            # Turns the update into an inline temporary table
+        ).cte("updated_broadcasts")
+
+        # join the update results directly to the FCM token table
+        query = (
+            select(FCMToken.token, User.preferred_lang)
+            .join(update_stmt, FCMToken.user_id == update_stmt.c.seeker_id)
+            .join(User, User.id == update_stmt.c.seeker_id)
+            .where(FCMToken.token.is_not(None))
         )
-        # rows = stale.all()
-
-        # if not rows:
-        #     return []
-
-        # stale_ids = [r.id for r in rows]
-        # seeker_ids = [r.seeker_id for r in rows]
-
-        # await self.db.execute(
-        #     update(UrgentBroadcast)
-        #     .where(UrgentBroadcast.id.in_(stale_ids))
-        #     .values(status=BroadcastStatus.EXPIRED)
-        # )
-
-        # return seeker_ids
 
         result = await self.db.execute(query)
-        seeker_ids = [row[0] for row in result.all()]
-
-        return seeker_ids
+        return list(result.scalars().all())
 
     async def get_broadcast_status(
         self, broadcast_id: UUID

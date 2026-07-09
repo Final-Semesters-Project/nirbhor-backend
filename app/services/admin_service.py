@@ -53,6 +53,12 @@ class AdminService:
         ]
 
     @staticmethod
+    async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
+        repo = AdminRepository(db)
+        data = await repo.get_analytics()
+        return AdminAnalyticsResponse(**data)
+
+    @staticmethod
     async def handle_verification(
         provider_id: UUID,
         data: VerificationActionSchema,

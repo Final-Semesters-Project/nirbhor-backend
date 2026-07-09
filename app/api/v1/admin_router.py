@@ -148,3 +148,14 @@ async def toggle_user_active(
     return await AdminService.toggle_user_active(
         user_id=user_id, db=db, lang=lang
     )
+
+# ── Analytics ──────────────────────────────────────────────────────────────────
+
+
+@router.get("/analytics", response_model=AdminAnalyticsResponse)
+async def get_analytics(
+    _: User = Depends(get_current_admin),
+    db: AsyncSession = Depends(get_db_session),
+):
+    """Stats for admin dashboard — totals, ratios, weekly booking graph data."""
+    return await AdminService.get_analytics(db=db)

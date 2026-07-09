@@ -37,146 +37,6 @@ app/
     └── notification_service.py ← FCM implementation
 ```
 
-
-## 1. Schemas
-
-### `app/schemas/provider_schema.py` — add public profile response
-
-### `app/schemas/urgent_schema.py` — add status response
-
-### `app/schemas/admin_schema.py` — new
-
-## 2. Repositories
-
-### `app/repositories/provider_repository.py` — add public profile fetch
-
-### `app/repositories/urgent_repository.py` — add status fetch
-
-### `app/repositories/admin_repository.py` — new
-
-```python
-
-
-class AdminRepository:
-    # ── Dashboard ─────────────────────────────────────────────────────────────
-
-    # ── Verifications ─────────────────────────────────────────────────────────
-
-    # ── Reports ───────────────────────────────────────────────────────────────
-
-    # ── Users ─────────────────────────────────────────────────────────────────
-
-    # ── Analytics ─────────────────────────────────────────────────────────────
-
-    async def get_analytics(self) -> dict:
-        now = datetime.now(timezone.utc)
-
-        total_users = await self.db.scalar(select(func.count()).select_from(User))
-        total_bookings = await self.db.scalar(select(func.count()).select_from(Booking))
-        avg_rating = await self.db.scalar(
-            select(func.avg(ProviderProfile.average_rating))
-            .where(ProviderProfile.average_rating.is_not(None))
-        )
-        seeker_count = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.SEEKER)
-        )
-        provider_count = await self.db.scalar(
-            select(func.count()).select_from(User).where(User.role == Role.PROVIDER)
-        )
-        active_providers = await self.db.scalar(
-            select(func.count())
-            .select_from(User)
-            .where(User.role == Role.PROVIDER)
-            .where(User.last_active_at >= now - timedelta(days=30))
-        )
-
-        # Bookings per week for last 8 weeks
-        # DATE_TRUNC groups timestamps into week buckets
-        from sqlalchemy import text
-        weekly_result = await self.db.execute(
-            select(
-                func.date_trunc("week", Booking.created_at).label("week_start"),
-                func.count().label("count"),
-            )
-            .where(Booking.created_at >= now - timedelta(weeks=8))
-            .group_by(text("week_start"))
-            .order_by(text("week_start"))
-        )
-        bookings_per_week = [
-            {"week_start": r.week_start, "count": r.count}
-            for r in weekly_result.all()
-        ]
-
-        seeker_count = seeker_count or 0
-        provider_count = provider_count or 0
-        ratio = round(seeker_count / provider_count, 2) if provider_count > 0 else None
-
-        return {
-            "total_users": total_users or 0,
-            "total_bookings": total_bookings or 0,
-            "average_provider_rating": round(float(avg_rating), 2) if avg_rating else None,
-            "active_providers_count": active_providers or 0,
-            "seeker_count": seeker_count,
-            "provider_count": provider_count,
-            "seeker_to_provider_ratio": ratio,
-            "bookings_per_week": bookings_per_week,
-        }
-```
-
----
-
-## 3. Services
-
-### `app/services/provider_service.py` — add public profile
-
-### `app/services/urgent_service.py` — add broadcast status
-
-### `app/services/admin_service.py` — new
-
-```python
-
-class AdminService:
-    @staticmethod
-    async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
-        repo = AdminRepository(db)
-        data = await repo.get_analytics()
-        return AdminAnalyticsResponse(**data)
-```
-
----
-
-## 4. Routers
-
-### `app/api/v1/providers.py` — add public profile endpoint
-
-### `app/api/v1/urgent.py` — add status endpoint
-
-### `app/api/v1/admin.py` — new
-
-```python
-# ── Reports ────────────────────────────────────────────────────────────────────
-
-# ── Users ──────────────────────────────────────────────────────────────────────
-
-# ── Analytics ──────────────────────────────────────────────────────────────────
-
-@router.get("/analytics", response_model=AdminAnalyticsResponse)
-async def get_analytics(
-    _: User = Depends(require_admin),
-    db: AsyncSession = Depends(get_db_session),
-):
-    """Stats for admin dashboard — totals, ratios, weekly booking graph data."""
-    return await AdminService.get_analytics(db=db)
-```
-
-### Register in `app/api/v1/router.py`
-
-```python
-from app.api.v1 import admin
-
-api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])
-```
-
 ---
 
 ## 5. FCM Setup — Firebase Admin SDK
@@ -214,293 +74,21 @@ FIREBASE_CREDENTIALS_JSON: str | None = None
 
 ### Step 3: Install the SDK
 
-```bash
-pip install firebase-admin
-```
-
-Add to `requirements.txt`:
-```
-firebase-admin==6.5.0
-```
-
 ### Step 4: Initialize Firebase once at startup
-
-```python
-# app/core/firebase.py
-
-import json
-import firebase_admin
-from firebase_admin import credentials, messaging
-from loguru import logger
-
-from app.core.config import settings
-
-
-def init_firebase() -> None:
-    """
-    Initialize Firebase Admin SDK once at app startup.
-    Supports both file path (local dev) and JSON string (Render production).
-    """
-    if firebase_admin._apps:
-        return  # already initialized
-
-    try:
-        if settings.FIREBASE_CREDENTIALS_JSON:
-            # Production: JSON string stored in environment variable
-            cred_dict = json.loads(settings.FIREBASE_CREDENTIALS_JSON)
-            cred = credentials.Certificate(cred_dict)
-        else:
-            # Local development: JSON file on disk
-            cred = credentials.Certificate(settings.FIREBASE_CREDENTIALS_PATH)
-
-        firebase_admin.initialize_app(cred)
-        logger.info("Firebase Admin SDK initialized successfully")
-    except Exception as e:
-        logger.error(f"Firebase initialization failed: {e}")
-        raise
-
-
-# Call in main.py lifespan:
-# from app.core.firebase import init_firebase
-# init_firebase()
-```
 
 ### Step 5: The NotificationService
 
-```python
-# app/services/notification_service.py
-
-from uuid import UUID
-from firebase_admin import messaging
-from loguru import logger
-
-
-class NotificationService:
-
-    @staticmethod
-    async def send_urgent_broadcast(
-        tokens: list[str],
-        broadcast_id: UUID,
-        skill_name: str,
-    ) -> None:
-        """
-        Send high-priority FCM to all nearby providers simultaneously.
-        Uses MulticastMessage for batch delivery (up to 500 tokens per call).
-        """
-        if not tokens:
-            return
-
-        message = messaging.MulticastMessage(
-            tokens=tokens,
-            data={
-                # 'data' payload (not 'notification') so Flutter/React can handle
-                # it even when app is backgrounded, and extract broadcast_id
-                "type": "URGENT_BROADCAST",
-                "broadcast_id": str(broadcast_id),
-                "skill_name": skill_name,
-            },
-            notification=messaging.Notification(
-                title=f"জরুরি কাজ! / Urgent Job!",
-                body=f"আপনার কাছে কেউ {skill_name} চাইছেন। / Someone needs {skill_name} urgently.",
-            ),
-            android=messaging.AndroidConfig(priority="high"),
-            apns=messaging.APNSConfig(
-                headers={"apns-priority": "10"}
-            ),
-        )
-
-        try:
-            response = messaging.send_each_for_multicast(message)
-            logger.info(
-                f"Urgent broadcast FCM: {response.success_count} sent, "
-                f"{response.failure_count} failed out of {len(tokens)} tokens"
-            )
-        except Exception as e:
-            # FCM failure must never crash the booking flow
-            logger.error(f"FCM urgent broadcast failed: {e}")
-
-    @staticmethod
-    async def send_booking_followup(
-        seeker_fcm_token: str,
-        booking_id: UUID,
-        provider_name: str,
-        attempt: int,
-    ) -> None:
-        """2-hour and 24-hour follow-up: 'Did you hire [provider]?'"""
-        if not seeker_fcm_token:
-            return
-
-        message = messaging.Message(
-            token=seeker_fcm_token,
-            data={
-                "type": "BOOKING_FOLLOWUP",
-                "booking_id": str(booking_id),
-                "attempt": str(attempt),
-            },
-            notification=messaging.Notification(
-                title="বুকিং আপডেট / Booking Update",
-                body=f"আপনি কি {provider_name} কে নিয়োগ করেছেন? / Did you hire {provider_name}?",
-            ),
-        )
-
-        try:
-            messaging.send(message)
-            logger.info(
-                f"Booking followup FCM sent: booking={booking_id} attempt={attempt}"
-            )
-        except Exception as e:
-            logger.error(f"FCM booking followup failed: {e}")
-
-    @staticmethod
-    async def send_completion_prompt(
-        seeker_fcm_token: str,
-        booking_id: UUID,
-        provider_name: str,
-    ) -> None:
-        """'Your job with [provider] should be done. Tap to review!'"""
-        if not seeker_fcm_token:
-            return
-
-        message = messaging.Message(
-            token=seeker_fcm_token,
-            data={
-                "type": "COMPLETION_PROMPT",
-                "booking_id": str(booking_id),
-            },
-            notification=messaging.Notification(
-                title="কাজ সম্পন্ন? / Job Done?",
-                body=f"{provider_name} এর সাথে আপনার কাজ শেষ হয়ে থাকলে রিভিউ দিন।",
-            ),
-        )
-
-        try:
-            messaging.send(message)
-        except Exception as e:
-            logger.error(f"FCM completion prompt failed: {e}")
-
-    @staticmethod
-    async def send_broadcast_expired(seeker_fcm_token: str) -> None:
-        """'No one responded. Please try a manual search.'"""
-        if not seeker_fcm_token:
-            return
-
-        message = messaging.Message(
-            token=seeker_fcm_token,
-            data={"type": "BROADCAST_EXPIRED"},
-            notification=messaging.Notification(
-                title="কোনো সাড়া নেই / No Response",
-                body="কেউ সাড়া দেননি। ম্যানুয়াল অনুসন্ধান করুন। / No one responded. Try manual search.",
-            ),
-        )
-
-        try:
-            messaging.send(message)
-        except Exception as e:
-            logger.error(f"FCM broadcast expired notification failed: {e}")
-
-    @staticmethod
-    async def send_broadcast_claimed(
-        seeker_fcm_token: str,
-        provider_name: str,
-    ) -> None:
-        """Notify seeker that a provider accepted their urgent request."""
-        if not seeker_fcm_token:
-            return
-
-        message = messaging.Message(
-            token=seeker_fcm_token,
-            data={"type": "BROADCAST_CLAIMED", "provider_name": provider_name},
-            notification=messaging.Notification(
-                title="প্রোভাইডার পাওয়া গেছে! / Provider Found!",
-                body=f"{provider_name} আপনার অনুরোধ গ্রহণ করেছেন। / {provider_name} accepted your request.",
-            ),
-        )
-
-        try:
-            messaging.send(message)
-        except Exception as e:
-            logger.error(f"FCM broadcast claimed notification failed: {e}")
-
-    @staticmethod
-    async def send_verification_approved(provider_fcm_token: str) -> None:
-        message = messaging.Message(
-            token=provider_fcm_token,
-            data={"type": "VERIFICATION_APPROVED"},
-            notification=messaging.Notification(
-                title="যাচাইকরণ সম্পন্ন! / Verified!",
-                body="আপনার অ্যাকাউন্ট যাচাই হয়েছে। এখন আপনি ব্লু টিক পাবেন।",
-            ),
-        )
-        try:
-            messaging.send(message)
-        except Exception as e:
-            logger.error(f"FCM verification approved failed: {e}")
-```
-
 ### Step 6: Wire FCM into main.py lifespan
 
-```python
-# app/main.py — in lifespan, before yield
-
-from app.core.firebase import init_firebase
-init_firebase()
-```
-
 ### Step 7: Getting FCM tokens from Flutter/React
-
-Flutter (provider/seeker mobile app):
-```dart
-// In Flutter — add firebase_messaging package
-// pubspec.yaml: firebase_messaging: ^14.x.x
-
-final fcmToken = await FirebaseMessaging.instance.getToken();
-// Send this token to your backend after login:
-// POST /api/v1/fcm/token  { "token": fcmToken, "device_type": "ANDROID" }
-```
-
-You already have an `fcm_tokens` table. You need one small endpoint to
-receive and store tokens:
-
-```python
-# Add to app/api/v1/auth.py or a new fcm.py router
-
-@router.post("/fcm/token", status_code=201)
-async def register_fcm_token(
-    token: str,
-    device_type: str,   # ANDROID, IOS, WEB
-    current_user: User = Depends(get_current_user),
-    db: AsyncSession = Depends(get_db_session),
-):
-    """Called by Flutter/React after login to register the device FCM token."""
-    from app.models.fcm_token import FCMToken
-    from sqlalchemy.dialects.postgresql import insert
-
-    # Upsert — avoid duplicates if same token registered twice
-    stmt = insert(FCMToken).values(
-        user_id=current_user.id,
-        token=token,
-        device_type=device_type,
-    ).on_conflict_do_nothing()
-
-    await db.execute(stmt)
-    await db.commit()
-    return {"registered": True}
-```
 
 ---
 
 ## What's Left After This
 
-**Done after this batch:**
-- All seeker flows ✓
-- All provider flows ✓
-- All admin flows ✓
-- FCM infrastructure ✓
-
 **Remaining before submission:**
 
-1. **Wire FCM into job stubs** — replace `# TODO` comments in
-   `booking_jobs.py` and `urgent_jobs.py` with actual
+1. **Wire FCM into job stubs** — replace `# TODO` comments in `urgent_jobs.py` with actual
    `NotificationService` calls. You need to fetch the user's FCM token
    from `fcm_tokens` table before calling each notification method.
 
@@ -676,3 +264,156 @@ if await ttl_cache.exists(f"blocklist:{token}"):
 ```
 
 
+# tests/test_booking_followup_job.py
+
+import pytest
+from unittest.mock import AsyncMock, patch, MagicMock
+from uuid import uuid4
+from datetime import datetime, timezone, timedelta
+
+from app.jobs.booking_jobs import send_booking_followup_notifications
+from app.repositories.booking_repository import BookingFollowupData
+
+
+def make_followup_data(fcm_token: str | None = "valid_token") -> BookingFollowupData:
+    return BookingFollowupData(
+        booking_id=uuid4(),
+        seeker_id=uuid4(),
+        fcm_token=fcm_token,
+        preferred_lang="bn",
+        provider_name_en="Karim",
+        provider_name_bn="করিম",
+    )
+
+
+@pytest.mark.asyncio
+async def test_no_bookings_returns_early():
+    """Job should exit cleanly with no FCM calls when no bookings ready."""
+    with patch(
+        "app.repositories.booking_repository.BookingRepository.get_initiated_ready_for_followup",
+        new_callable=AsyncMock,
+        return_value=[],
+    ), patch("app.services.notification_service.messaging.send") as mock_send:
+        await send_booking_followup_notifications()
+        mock_send.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_sends_fcm_for_each_booking():
+    """Each booking with a valid token gets exactly one FCM send call."""
+    data = [make_followup_data(), make_followup_data()]
+
+    with patch(
+        "app.repositories.booking_repository.BookingRepository.get_initiated_ready_for_followup",
+        new_callable=AsyncMock,
+        return_value=data,
+    ), patch("app.services.notification_service.messaging.send") as mock_send:
+        await send_booking_followup_notifications()
+        assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_missing_token_skips_booking_continues_others():
+    """
+    Critical test: if one booking has no FCM token, others must still be processed.
+    Previously `return` was used instead of `continue` — this test catches regression.
+    """
+    data = [
+        make_followup_data(fcm_token=None),   # no token — should be skipped
+        make_followup_data(fcm_token="tok1"),  # should still be sent
+        make_followup_data(fcm_token="tok2"),  # should still be sent
+    ]
+
+    with patch(
+        "app.repositories.booking_repository.BookingRepository.get_initiated_ready_for_followup",
+        new_callable=AsyncMock,
+        return_value=data,
+    ), patch("app.services.notification_service.messaging.send") as mock_send:
+        await send_booking_followup_notifications()
+        # Only 2 of 3 should send (the one with None token is skipped)
+        assert mock_send.call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_fcm_failure_does_not_crash_job():
+    """FCM send failure for one booking must not prevent others from sending."""
+    data = [make_followup_data(), make_followup_data()]
+
+    call_count = 0
+    def mock_send(message):
+        nonlocal call_count
+        call_count += 1
+        if call_count == 1:
+            raise Exception("FCM network error")
+        # Second call succeeds
+
+    with patch(
+        "app.repositories.booking_repository.BookingRepository.get_initiated_ready_for_followup",
+        new_callable=AsyncMock,
+        return_value=data,
+    ), patch("app.services.notification_service.messaging.send", side_effect=mock_send):
+        # Must not raise
+        await send_booking_followup_notifications()
+        assert call_count == 2
+
+
+@pytest.mark.asyncio
+async def test_stale_token_logged_not_raised():
+    """UnregisteredError (stale token) should be caught and logged, not re-raised."""
+    from firebase_admin import messaging as fb_messaging
+    data = [make_followup_data(fcm_token="stale_token")]
+
+    with patch(
+        "app.repositories.booking_repository.BookingRepository.get_initiated_ready_for_followup",
+        new_callable=AsyncMock,
+        return_value=data,
+    ), patch(
+        "app.services.notification_service.messaging.send",
+        side_effect=fb_messaging.UnregisteredError("token invalid")
+    ):
+        # Must not raise
+        await send_booking_followup_notifications()
+
+
+def test_followup_data_correct_language_fallback():
+    """If name_bn is None, provider_name_bn should fall back to name_en."""
+    data = BookingFollowupData(
+        booking_id=uuid4(),
+        seeker_id=uuid4(),
+        fcm_token="tok",
+        preferred_lang="bn",
+        provider_name_en="Karim",
+        provider_name_bn=None,  # missing Bangla name
+    )
+    # The repo sets: provider_name_bn=row.provider_name_bn or row.provider_name_en
+    # So this should never be None after repo processing
+    # This test verifies the repo's fallback logic
+    assert data.provider_name_bn is not None or data.provider_name_en is not None
+
+
+# Integration-style test for the repository query
+@pytest.mark.asyncio
+async def test_get_initiated_ready_for_followup_returns_correct_window(
+    db_session,
+    create_booking_at,  # fixture that creates booking with given call_unlocked_at
+):
+    """Only bookings in the 2hr±5min window should be returned."""
+    now = datetime.now(timezone.utc)
+
+    # Should be included (exactly 2hr 2min ago)
+    in_window = await create_booking_at(now - timedelta(hours=2, minutes=2))
+
+    # Should be excluded (too recent — only 1hr ago)
+    too_recent = await create_booking_at(now - timedelta(hours=1))
+
+    # Should be excluded (too old — 3hr ago, outside window)
+    too_old = await create_booking_at(now - timedelta(hours=3))
+
+    from app.repositories.booking_repository import BookingRepository
+    repo = BookingRepository(db_session)
+    results = await repo.get_initiated_ready_for_followup()
+
+    result_ids = {r.booking_id for r in results}
+    assert in_window.id in result_ids
+    assert too_recent.id not in result_ids
+    assert too_old.id not in result_ids

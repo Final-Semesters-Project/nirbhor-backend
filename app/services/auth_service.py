@@ -311,3 +311,24 @@ class AuthService:
             f"User logged in: {user.id} | role: {user.role.value}")
 
         return result
+
+    @staticmethod
+    async def register_fcm_token(
+        user_id: uuid.UUID,
+        token: str,
+        db: AsyncSession,
+        device_type: str | None = None,
+    ):
+        from app.models.fcm_token import FCMToken
+        from sqlalchemy.dialects.postgresql import insert
+
+        # Upsert — avoid duplicates if same token registered twice
+        stmt = insert(FCMToken).values(
+            user_id=user_id,
+            token=token,
+            device_type=device_type,
+        ).on_conflict_do_nothing()
+
+        await db.execute(stmt)
+        await db.commit()
+        return {"registered": True}
