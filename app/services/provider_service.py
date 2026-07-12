@@ -14,18 +14,26 @@ from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
 from fastapi import HTTPException, status
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, PublicProviderProfile, SkillInfo
-from app.services.cloudinary_service import delete_image_from_cloudinary
+from app.core.cloudinary_helpers import delete_image_from_cloudinary
+
+NID_FIELDS = {"nid_front_public_id", "nid_back_public_id"}
 
 
 class ProviderService:
 
     @staticmethod
-    async def _delete_old_image_if_changed(data_dict: dict, field_name: str, current_value: str | None) -> None:
+    async def _delete_old_image_if_changed(
+            data_dict: dict,
+            field_name: str,
+            current_value: str | None) -> None:
         """Delete old image from Cloudinary if a new value is provided."""
         if field_name in data_dict and current_value is not None:
             new_value = data_dict[field_name]
             if new_value != current_value:
-                await delete_image_from_cloudinary(public_id=current_value)
+                await delete_image_from_cloudinary(
+                    public_id=current_value,
+                    authenticated=field_name in NID_FIELDS
+                )
 
     @staticmethod
     async def get_dashboard(
