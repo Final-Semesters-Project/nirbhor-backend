@@ -8,9 +8,11 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.models.skill_model import Skill
 from app.models.urgent_broadcast_model import BroadcastStatus
+from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
+from app.services.notification_service import NotificationService
 
 
 class UrgentService:
@@ -27,6 +29,15 @@ class UrgentService:
         Seeker triggers 'Need It NOW/Urgent'.
         """
         urgent_repo = UrgentBroadcastRepository(db)
+        skill_repo = SkillRepository(db)
+
+        skill_row = await skill_repo.get_skill_names(skill_id=data.skill_id)
+
+        if not skill_row:
+            raise DomainValidationError(t("invalid_skill_ids", lang))
+
+        skill_name_en = skill_row.name_en
+        skill_name_bn = skill_row.name_bn or skill_name_en
 
         # 1. Create the broadcast row
         broadcast = await urgent_repo.create_broadcast(
@@ -37,9 +48,10 @@ class UrgentService:
         )
 
         # 2. Find nearby provider FCM tokens (within 3 KM, has_smartphone=True)
-        tokens = await urgent_repo.get_nearby_fcm_tokens(
+        tokens = await urgent_repo.get_nearby_fcm_tokens_to_create_urgent_broadcast_notification(
             latitude=data.latitude,
             longitude=data.longitude,
+            skill_id=data.skill_id,
             radius_km=3,
         )
 
@@ -50,7 +62,12 @@ class UrgentService:
             logger.info(
                 f"Urgent broadcast {broadcast.id}: sending FCM to {len(tokens)} providers"
             )
-            # TODO: await NotificationService.send_urgent_broadcast(tokens, broadcast.id, skill_id)
+            await NotificationService.send_urgent_broadcast_to_providers(
+                tokens=tokens,
+                broadcast_id=broadcast.id,
+                skill_name_en=skill_name_en,
+                skill_name_bn=skill_name_bn
+            )
         else:
             logger.warning(
                 f"Urgent broadcast {broadcast.id}: no nearby smartphone providers found"
@@ -120,10 +137,19 @@ class UrgentService:
         urgent_repo = UrgentBroadcastRepository(db)
         user_repo = UserRepository(db)
 
-        broadcast = await urgent_repo.claim_broadcast(broadcast_id, provider_id)
+        broadcast = await urgent_repo.claim_a_broadcast_by_provider(broadcast_id, provider_id)
 
         if not broadcast:
             raise DomainValidationError(t("broadcast_not_found", lang))
+
+        if broadcast.status == BroadcastStatus.EXPIRED:
+            raise DomainValidationError(t("broadcast_not_found", lang))
+
+        if broadcast.status == BroadcastStatus.CLAIMED:
+            if broadcast.claimed_by_provider_id != provider_id:
+                # Someone else claimed it first
+                raise DomainIntegrityError(
+                    t("broadcast_already_claimed", lang))
 
         seeker = await user_repo.get_by_id(broadcast.seeker_id)
 
@@ -134,36 +160,51 @@ class UrgentService:
         if broadcast.status == BroadcastStatus.CLAIMED:
             if broadcast.claimed_by_provider_id == provider_id:
                 # This provider already claimed it (duplicate tap) — idempotent OK
+                # Fetch seeker for the response (no FCM — already sent on first claim)
                 await db.commit()
                 return (
                     ClaimedBroadcastResponseToProvider(
                         broadcast_id=broadcast.id,
                         status=BroadcastStatus.CLAIMED,
-                        seeker_phone=seeker.phone_en,
-                        seeker_name=seeker.name_bn if lang == "bn" else seeker.name_en
+                        seeker_phone=seeker.phone_en if seeker else "",
+                        seeker_name=((seeker.name_bn or seeker.name_en) if lang ==
+                                     "bn" else seeker.name_en) if seeker else "",
                     )
                 )
-            # Another provider claimed it first
-            raise DomainIntegrityError(t("broadcast_already_claimed", lang))
 
-        if broadcast.status == BroadcastStatus.EXPIRED:
-            raise DomainValidationError(t("broadcast_not_found", lang))
-
+        # ── Successful first claim ────────────────────────────────────────────────
         await db.commit()
 
         logger.info(
             f"Broadcast {broadcast_id} claimed by provider {provider_id}")
 
-        # TODO: Notify seeker that provider is on the way
-        # await NotificationService.send_broadcast_claimed(broadcast.seeker_id, provider_id)
+        # Fetch notification data — seeker FCM + provider name — one query
+        notification_data = await urgent_repo.get_claim_notification_data(
+            seeker_id=broadcast.seeker_id,
+            provider_id=provider_id,
+        )
 
-        # FIX: Shouldn't we send the seeker phone number to the provider when he claims the broadcast? so that they can communicate? After that if the provider refuse to come then the seeker can initiate another broadcast?
+        if notification_data and notification_data.seeker_fcm_token:
+            await NotificationService.send_broadcast_claimed_to_seeker(
+                seeker_fcm_token=notification_data.seeker_fcm_token,
+                provider_name_en=notification_data.provider_name_en,
+                provider_name_bn=notification_data.provider_name_bn,
+                preferred_lang=notification_data.seeker_preferred_lang,
+            )
+        else:
+            logger.warning(
+                f"No FCM token for seeker {broadcast.seeker_id} "
+                f"— skipping claim notification"
+            )
+
         return (
             ClaimedBroadcastResponseToProvider(
                 broadcast_id=broadcast.id,
                 status=broadcast.status,
                 seeker_phone=seeker.phone_en,
-                seeker_name=seeker.name_bn if lang == "bn" else seeker.name_en
+                seeker_name=(
+                    (seeker.name_bn or seeker.name_en) if lang ==
+                    "bn" else seeker.name_en) if seeker else "",
             )
         )
 

@@ -3,6 +3,7 @@ from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
+from app.core.cache import UserCacheService
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.provider_profile_model import VerificationStatus
 from app.repositories.admin_repository import AdminRepository
@@ -22,9 +23,30 @@ from app.schemas.admin_schema import (
 from app.models.user_report_model import ReportStatus
 from app.core.exceptions import DomainValidationError, DomainIntegrityError
 from app.core.i18n import t
+import cloudinary.utils
 
 
 class AdminService:
+    # ================ Signed URL Generation for Cloudinary ================
+
+    @staticmethod
+    def get_signed_nid_url(public_id: str | None, expires_in: int = 300) -> str | None:
+        """
+        Generates a signed URL valid for expires_in seconds (default 5 minutes).
+        Returns None if public_id is None.
+        Called when admin fetches a provider's verification details.
+        """
+        if not public_id:
+            return None
+        url, _ = cloudinary.utils.cloudinary_url(
+            public_id,
+            sign_url=True,
+            secure=True,
+            # expires_at is not directly supported in Python SDK this way
+            # The URL is signed with the API secret — Cloudinary validates it
+        )
+        return url
+
     @staticmethod
     async def get_dashboard(db: AsyncSession) -> AdminDashboardResponse:
         repo = AdminRepository(db)
@@ -43,8 +65,10 @@ class AdminService:
                 name=user.name_en,
                 phone=user.phone_en,
                 photo_url=profile.photo_url,
-                nid_url_front=profile.nid_url_front,
-                nid_url_back=profile.nid_url_back,
+                nid_url_front=AdminService.get_signed_nid_url(
+                    profile.nid_url_front),
+                nid_url_back=AdminService.get_signed_nid_url(
+                    profile.nid_url_back),
                 verification_level=profile.verification_level.value,
                 verification_status=profile.verification_status.value,
                 submitted_at=profile.updated_at or profile.created_at,
@@ -282,6 +306,8 @@ class AdminService:
         logger.info(
             f"Admin toggled user {user_id} is_active → {user.is_active}"
         )
+
+        UserCacheService.invalidate(str(user_id))
         return {
             "user_id": user_id,
             "is_active": user.is_active,

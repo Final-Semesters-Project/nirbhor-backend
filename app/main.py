@@ -1,6 +1,7 @@
 from loguru import logger
 from app.api.v1.router import api_router
 from fastapi import FastAPI
+from app.core.cloudinary_helpers import init_cloudinary
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from contextlib import asynccontextmanager
@@ -13,9 +14,9 @@ app_kwargs = {}
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # runs on startup, before any requests
-    # runs once on startup
+    # runs on startup, before any requests, runs once on startup
     setup_logging()
+    init_cloudinary()
     async with AsyncSessionLocal() as db:
         await seed_categories_and_skills(db)
         await create_admin_user(db)
@@ -37,6 +38,10 @@ async def lifespan(app: FastAPI):
         auto_complete_stale_bookings,
         "cron", hour=1, minute=0
     )  # nightly
+
+    from app.core.cache import TokenBlockListService
+
+    scheduler.add_job(TokenBlockListService.cleanup, "interval", minutes=30)
 
     scheduler.start()
     logger.success("APScheduler started successfully inside lifespan startup.")
