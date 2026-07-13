@@ -114,6 +114,12 @@ class ProviderProfile(TimestampMixin, Base):
     ai_review_summary_bn: Mapped[str | None] = mapped_column(
         String, nullable=True)
 
+    ai_summary_generated_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+        default=None,
+    )
+
     # add skill_links relationship
     skill_links: Mapped[list["ProviderSkillLink"]] = relationship(  # type: ignore
         back_populates="provider",
