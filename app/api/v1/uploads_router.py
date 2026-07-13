@@ -47,6 +47,7 @@ async def get_nid_upload_signature(
         "public_id":   public_id,
         "access_type": "authenticated",  # makes image private in Cloudinary
         "overwrite":   True,
+        "upload_preset": "nirbhor_nid",  # Cloudinary preset name
     }
 
     signature = cloudinary.utils.api_sign_request(
@@ -63,6 +64,7 @@ async def get_nid_upload_signature(
         "public_id":   public_id,
         "access_type": "authenticated",
         "overwrite":   True,
+        "upload_preset": "nirbhor_nid",
         # Signature expires in ~1 hour (Cloudinary default)
         # Frontend should use it immediately
     }
