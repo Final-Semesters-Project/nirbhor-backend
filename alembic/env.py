@@ -36,15 +36,22 @@ target_metadata = Base.metadata
 
 # This function is added so that alembic doesn't delete the tables that are not part of Base.metadata like table from default PostGIS extension
 def include_object(object, name, type_, reflected, compare_to):
+    # 1. Skip tables not in your models (PostGIS extension tables like spatial_ref_sys)
     # Only include tables that are part of your Base.metadata
     if type_ == "table" and name not in target_metadata.tables:
         return False
+
+    # 2. Skip sequences owned by PostGIS/Tiger extension
     # Explicitly ignore sequences owned by PostGIS/Tiger
     if type_ == "sequence" and reflected and object.info.get("skip_autogenerate", False):
         return False
-    return True
 
-# TODO: add geometry types to columns when starting to use PostGIS in provider_profile and others. We need to configure alembic for this(Alembic is showing warnings in the console for not having geometry types)
+    # 3. Skip spatial indexes — GeoAlchemy2 creates these automatically.
+    # If Alembic also tries to create them it raises 'index already exists'.
+    if type_ == "index" and name is not None:
+        if name.startswith("idx_") and "_base_location" in name:
+            return False
+    return True
 
 
 def run_migrations_offline() -> None:
@@ -75,11 +82,10 @@ def run_migrations_offline() -> None:
 
 
 def run_migrations_online() -> None:
-    """Run migrations in 'online' mode.
-
+    """
+    Run migrations in 'online' mode.
     In this scenario we need to create an Engine
     and associate a connection with the context.
-
     """
     # 1 and 2 are added manually to solve alembic migration error
     load_dotenv()
@@ -101,7 +107,8 @@ def run_migrations_online() -> None:
 
     with connectable.connect() as connection:
         context.configure(
-            connection=connection, target_metadata=target_metadata,
+            connection=connection,
+            target_metadata=target_metadata,
             include_object=include_object,
             # ↓ GeoAlchemy2's built-in render function — handles Geometry correctly
             render_item=alembic_helpers.render_item,

@@ -81,7 +81,7 @@ class ProviderProfile(TimestampMixin, Base):
 
     # PostGIS point — stores (longitude, latitude)
     base_location: Mapped[object] = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326, spatial_index=False),
+        Geometry(geometry_type="POINT", srid=4326, spatial_index=True),
         nullable=False,
     )
 
