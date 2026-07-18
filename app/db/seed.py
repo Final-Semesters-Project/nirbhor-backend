@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.category_model import Category
+from app.models.provider_profile_model import ProviderProfile, VerificationLevel, VerificationStatus
+from app.models.provider_skill_link_model import ProviderSkillLink
 from app.models.skill_model import Skill
 from loguru import logger
 from app.core.security import Security
 from app.models.user_model import Role, User
+from datetime import datetime, timedelta, timezone
 
 
 async def seed_categories_and_skills(db: AsyncSession) -> None:
@@ -75,7 +78,7 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
             db.add(skill)
 
     await db.commit()
-    print("✅ Seed data inserted successfully")
+    logger.success("✅ Seed data inserted successfully")
 
 
 async def create_admin_user(db: AsyncSession) -> None:
@@ -93,4 +96,89 @@ async def create_admin_user(db: AsyncSession) -> None:
     )
     db.add(admin)
     await db.commit()
-    print("✅ Admin user created successfully")
+    logger.success("✅ Admin user created successfully")
+
+
+async def seed_load_test_seeker(db: AsyncSession) -> None:
+    """Creates test accounts for load testing. Run before locust."""
+    from app.core.security import Security
+
+    # check if already seeded
+    existing = await db.execute(select(User).where(User.phone_en == "01700000001"))
+    if existing.scalar_one_or_none():
+        logger.info("Load test seeker already seeded. Skipping...")
+        return
+
+    seeker = User(
+        phone_en="01700000001",
+        password_hash=Security.hash_password("password123"),
+        role=Role.SEEKER,
+        name_en="Load Test Seeker",
+        name_bn="লোড টেস্ট",
+        is_active=True,
+        preferred_lang="en",
+        last_active_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+    )
+    db.add(seeker)
+
+    await db.commit()
+    logger.success("✅ Load test Seeker created successfully")
+
+
+async def seed_load_test_provider(db: AsyncSession) -> None:
+    """Creates test accounts for load testing. Run before locust."""
+    from app.core.security import Security
+
+    # check if already seeded
+    existing = await db.execute(select(User).where(User.phone_en == "01800000001"))
+    if existing.scalar_one_or_none():
+        logger.info("Load test provider already seeded. Skipping...")
+        return
+
+    from geoalchemy2.shape import from_shape
+    from shapely.geometry import Point
+    provider = User(
+        phone_en="01800000001",
+        password_hash=Security.hash_password("password123"),
+        role=Role.PROVIDER,
+        name_en="Load Test Provider",
+        name_bn="লোড টেস্ট",
+        is_active=True,
+        preferred_lang="bn",
+        last_active_at=datetime.now(timezone.utc),
+        created_at=datetime.now(timezone.utc),
+    )
+
+    db.add(provider)
+    await db.flush()  # need provider.id for the profile FK
+
+    # Provider location: 0.4km from the seeker point — will appear in searches
+    profile = ProviderProfile(
+        user_id=provider.id,
+        base_location=from_shape(Point(90.3950, 23.7540), srid=4326),
+        location_updated_at=datetime.now(timezone.utc) - timedelta(days=20),
+        working_radius_km=5,
+        radius_updated_at=datetime.now(timezone.utc) - timedelta(days=20),
+        has_smartphone=True,
+        is_available=True,
+        # verification_level=VerificationLevel.BASIC.value,
+        # verification_status=VerificationStatus.NOT_INITIATED.value,
+        warning_status=False,
+    )
+    db.add(profile)
+    await db.flush()
+
+    # Link the provider to the first skill that exists in the DB
+    # (categories and skills must be seeded before this runs)
+    first_skill = await db.scalar(select(Skill).limit(1))
+    if first_skill:
+        link = ProviderSkillLink(
+            provider_id=provider.id,
+            skill_id=first_skill.id,
+        )
+        db.add(link)
+
+    await db.commit()
+    logger.success(
+        "✅ Load test Provider + profile + skill link created successfully")

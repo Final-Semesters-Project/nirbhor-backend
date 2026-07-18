@@ -1,0 +1,4 @@
+# .gitattributes
+# Force Unix line endings for shell scripts regardless of OS
+entrypoint.sh text eol=lf
+*.sh text eol=lf
