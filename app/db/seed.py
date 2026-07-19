@@ -1,7 +1,7 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.category_model import Category
-from app.models.provider_profile_model import ProviderProfile, VerificationLevel, VerificationStatus
+from app.models.provider_profile_model import ProviderProfile
 from app.models.provider_skill_link_model import ProviderSkillLink
 from app.models.skill_model import Skill
 from loguru import logger
@@ -109,26 +109,37 @@ async def seed_load_test_seeker(db: AsyncSession) -> None:
         logger.info("Load test seeker already seeded. Skipping...")
         return
 
-    seeker = User(
-        phone_en="01700000001",
-        password_hash=Security.hash_password("password123"),
-        role=Role.SEEKER,
-        name_en="Load Test Seeker",
-        name_bn="লোড টেস্ট",
-        is_active=True,
-        preferred_lang="en",
-        last_active_at=datetime.now(timezone.utc),
-        created_at=datetime.now(timezone.utc),
-    )
-    db.add(seeker)
+    password_hash = Security.hash_password("password123")
+    seekers_to_add = []
+
+    for i in range(1, 11):
+        # Generates: "01700000001", "01700000002", ..., "01700000010"
+        phone = f"017000000{i:02d}"
+
+        seeker = User(
+            phone_en=phone,
+            password_hash=password_hash,
+            role=Role.SEEKER,
+            name_en=f"Load Test Seeker {i}",
+            name_bn=f"লোড টেস্ট সিকার {i}",
+            is_active=True,
+            preferred_lang="en",
+            last_active_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc),
+        )
+        seekers_to_add.append(seeker)
+
+    db.add_all(seekers_to_add)
 
     await db.commit()
-    logger.success("✅ Load test Seeker created successfully")
+    logger.success("✅ 10 Load test Seeker created successfully")
 
 
 async def seed_load_test_provider(db: AsyncSession) -> None:
     """Creates test accounts for load testing. Run before locust."""
     from app.core.security import Security
+    from geoalchemy2.shape import from_shape
+    from shapely.geometry import Point
 
     # check if already seeded
     existing = await db.execute(select(User).where(User.phone_en == "01800000001"))
@@ -136,49 +147,50 @@ async def seed_load_test_provider(db: AsyncSession) -> None:
         logger.info("Load test provider already seeded. Skipping...")
         return
 
-    from geoalchemy2.shape import from_shape
-    from shapely.geometry import Point
-    provider = User(
-        phone_en="01800000001",
-        password_hash=Security.hash_password("password123"),
-        role=Role.PROVIDER,
-        name_en="Load Test Provider",
-        name_bn="লোড টেস্ট",
-        is_active=True,
-        preferred_lang="bn",
-        last_active_at=datetime.now(timezone.utc),
-        created_at=datetime.now(timezone.utc),
-    )
-
-    db.add(provider)
-    await db.flush()  # need provider.id for the profile FK
-
-    # Provider location: 0.4km from the seeker point — will appear in searches
-    profile = ProviderProfile(
-        user_id=provider.id,
-        base_location=from_shape(Point(90.3950, 23.7540), srid=4326),
-        location_updated_at=datetime.now(timezone.utc) - timedelta(days=20),
-        working_radius_km=5,
-        radius_updated_at=datetime.now(timezone.utc) - timedelta(days=20),
-        has_smartphone=True,
-        is_available=True,
-        # verification_level=VerificationLevel.BASIC.value,
-        # verification_status=VerificationStatus.NOT_INITIATED.value,
-        warning_status=False,
-    )
-    db.add(profile)
-    await db.flush()
-
-    # Link the provider to the first skill that exists in the DB
-    # (categories and skills must be seeded before this runs)
     first_skill = await db.scalar(select(Skill).limit(1))
-    if first_skill:
-        link = ProviderSkillLink(
-            provider_id=provider.id,
-            skill_id=first_skill.id,
+    password_hash = Security.hash_password("password123")
+    now = datetime.now(timezone.utc)
+
+    for i in range(1, 11):
+        phone = f"018000000{i:02d}"
+
+        provider = User(
+            phone_en=phone,
+            password_hash=password_hash,
+            role=Role.PROVIDER,
+            name_en=f"Load Test Provider {i}",
+            name_bn=f"লোড টেস্ট প্রোভাইডার {i}",
+            is_active=True,
+            preferred_lang="bn",
+            last_active_at=now,
+            created_at=now,
         )
-        db.add(link)
+        db.add(provider)
+        await db.flush()  # Generates provider.id
+
+        # Profile setup (Slightly shifts coordinates so they aren't stacked on top of each other)
+        profile = ProviderProfile(
+            user_id=provider.id,
+            base_location=from_shape(
+                Point(90.3950 + (i * 0.001), 23.7540 + (i * 0.001)), srid=4326),
+            location_updated_at=now - timedelta(days=20),
+            working_radius_km=5,
+            radius_updated_at=now - timedelta(days=20),
+            has_smartphone=True,
+            is_available=True,
+            warning_status=False,
+        )
+        db.add(profile)
+
+        # Skill Link setup
+        if first_skill:
+            link = ProviderSkillLink(
+                provider_id=provider.id,
+                skill_id=first_skill.id,
+            )
+            db.add(link)
 
     await db.commit()
     logger.success(
-        "✅ Load test Provider + profile + skill link created successfully")
+        "✅ 10 Load test Providers + profiles + skill links created successfully"
+    )
