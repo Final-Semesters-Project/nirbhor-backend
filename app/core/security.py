@@ -1,3 +1,5 @@
+import secrets
+
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from jose import jwt, JWTError, ExpiredSignatureError
@@ -67,6 +69,8 @@ class Security:
         payload = {
             "sub": str(subject),
             "type": "refresh",
+            # jti(JWT ID) is unique ID per token - fixes duplicate constraint. Prevents error when same user re-generates token at the same millisecond
+            "jti": secrets.token_hex(16),
             "iat": int(datetime.now(timezone.utc).timestamp()),
             "exp": int(expire.timestamp()),
         }
