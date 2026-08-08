@@ -293,7 +293,9 @@ class AuthService:
             )
 
         # 2. Verify password
-        if not Security.verify_password(password, user.password_hash):
+        is_valid_password = await Security.verify_password_async(password, user.password_hash)
+        # if not Security.verify_password(password, user.password_hash):
+        if not is_valid_password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=t("invalid_credentials", lang),
@@ -319,7 +321,7 @@ class AuthService:
         )
 
         await db.commit()
-        # TODO: add user to cache
+        UserCacheService.set(str(result.user_id), user)
 
         logger.success(
             f"User logged in: {user.id} | role: {user.role.value}")
