@@ -28,7 +28,6 @@ async def create_new_category(
 
 @router.get("/list", response_model=list[CategoryResponse])
 async def get_categories(
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
