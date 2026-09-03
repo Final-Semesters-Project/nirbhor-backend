@@ -260,7 +260,7 @@ class ProviderService:
             if len(payload.skill_ids) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=t("empty_data", lang),
+                    detail=t("skill_ids_required", lang),
                 )
 
             await provider_repo.add_skills(provider_id=provider_id, skill_ids=payload.skill_ids)

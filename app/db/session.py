@@ -7,27 +7,56 @@ is_local = settings.APP_ENV == "development"
 
 # pgBouncer (NeonDB) in transaction mode doesn't support prepared statements
 # local Postgres doesn't need these restrictions
+# if is_local:
+#     connect_args = {}
+#     pool_config={
+#     "poolclass": AsyncAdaptedQueuePool,
+#     "pool_size":10,        # baseline connections kept open
+#     "max_overflow":10,    # burst capacity beyond pool_size under load
+#     "pool_timeout":30,    # seconds to wait for a connection before erroring
+#     }
+# else:
+#     # Add SSL if not in local
+#     connect_args = {
+#         "ssl": True,
+#         "statement_cache_size": 0,
+#         "prepared_statement_cache_size": 0,
+#     }
+#     # NullPool for NEON DB because it uses pgbouncer for connection pooling and
+#     # AsyncAdaptedQueuePool(which is default) for local DB
+#     pool_config = {
+#         "poolclass": NullPool,
+#     }
+
+# create async engine for database session
 if is_local:
-    connect_args = {}
+     # Local PostgreSQL
+    # SQLAlchemy manages the connection pool.
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        poolclass=AsyncAdaptedQueuePool,
+        pool_size=10,        # baseline connections kept open
+        max_overflow=10,    # burst capacity beyond pool_size under load
+        pool_timeout=30,    # seconds to wait for a connection before erroring
+        echo=False,  # disable sqlalchemy logging, we will use loguru instead
+        # future=True,  # this enables sqlalchemy 2.0
+        pool_pre_ping=True, # detects stale/dropped connections (useful after DB restarts)
+    )
 else:
-    # Add SSL if not in local
-    connect_args = {
+    # Neon PostgreSQL + PgBouncer
+    # PgBouncer manages connection pooling.
+    engine = create_async_engine(
+        settings.DATABASE_URL,
+        poolclass=NullPool,
+        connect_args = {
         "ssl": True,
         "statement_cache_size": 0,
         "prepared_statement_cache_size": 0,
-    }
+        },
+        echo=False,  # disable sqlalchemy logging, we will use loguru instead
+        pool_pre_ping=True, # detects stale/dropped connections (useful after DB restarts)
+    )
 
-
-# create async engine for database session
-engine = create_async_engine(
-    settings.DATABASE_URL,
-    # NullPool for NEON DB because it uses pgbouncer for connection pooling and
-    # AsyncAdaptedQueuePool(which is default) for local DB
-    poolclass=NullPool if not is_local else AsyncAdaptedQueuePool,
-    connect_args=connect_args,
-    future=True,  # this enables sqlalchemy 2.0
-    echo=False  # disable sqlalchemy logging, we will use loguru instead
-)
 
 
 # create async session
