@@ -1,13 +1,10 @@
 from pydantic import BaseModel
-from datetime import datetime
-
-from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field, ValidationInfo
 import re
 from uuid import UUID
 from app.core.schema_validators import validate_phone, validate_password, validate_radius, validate_name
 from app.core.i18n import MESSAGES
-
+from enum import Enum
 
 class RegistrationBaseSchema(BaseModel):
     name_en: str
@@ -95,3 +92,12 @@ class RefreshTokenSchema(BaseModel):
 class LogoutSchema(BaseModel):
     refresh_token: str
     fcm_token: str | None = None   # optional: also clear this device's FCM token
+
+class DeviceType(str, Enum):
+    ANDROID = "android"
+    IOS = "ios"
+    WEB = "web"
+
+class FCMTokenRequest(BaseModel):
+    token: str
+    device_type: DeviceType = DeviceType.ANDROID
