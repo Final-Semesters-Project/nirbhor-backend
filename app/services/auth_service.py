@@ -128,7 +128,8 @@ class AuthService:
             await db.commit()
             # await db.refresh(user)
 
-            # TODO: add user to cache
+            # add user to cache
+            UserCacheService.set(str(result.user_id), user)
 
             logger.success(f"Seeker registered: {user.id}")
             return result
@@ -209,6 +210,12 @@ class AuthService:
                 user_id=user.id
             )
 
+            if (len(data.skill_ids) == 0):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=t("skill_ids_required", lang),
+                )
+            
             await provider_repo.add_skills(user.id, data.skill_ids)
 
             # create and store tokens
@@ -223,7 +230,9 @@ class AuthService:
             )
 
             await db.commit()
-            # TODO: add user to cache
+
+            # add user to cache
+            UserCacheService.set(str(result.user_id), user)
 
             logger.success(f"Provider registered: {user.id}")
             return result

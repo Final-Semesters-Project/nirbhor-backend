@@ -31,7 +31,6 @@ async def create_new_skill(
 @router.get("/{category_id}/skills", response_model=list[SkillResponseSchema])
 async def get_skills_by_category(
     category_id: int,
-    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
