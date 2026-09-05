@@ -9,6 +9,7 @@ from app.core.i18n import MESSAGES, get_lang, t, make_validated_body
 from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.auth_schema import (
+    FCMTokenRequest,
     LogoutSchema,
     SeekerRegisterSchema,
     ProviderRegisterSchema,
@@ -75,12 +76,6 @@ async def password_login(
     return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
 
 
-
-
-class FCMTokenRequest(BaseModel):
-    token: str
-    device_type: str | None = None
-
 @router.post("/fcm/token", status_code=201)
 async def register_fcm_token(
     data: FCMTokenRequest,
@@ -88,14 +83,11 @@ async def register_fcm_token(
     db: AsyncSession = Depends(get_db_session),
 ):
     """Called by Flutter/React after login to register the device FCM token."""
-    dev_type = data.device_type.lower() if data.device_type else "android"
-    if dev_type not in ["android", "ios", "web"]:
-        dev_type = "android"
 
     return await AuthService.register_fcm_token(
         user_id=current_user.id,
         token=data.token,
-        device_type=dev_type,
+        device_type=data.device_type,
         db=db,
     )
 
