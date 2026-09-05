@@ -7,7 +7,7 @@ import re
 from uuid import UUID
 from app.core.schema_validators import validate_phone, validate_password, validate_radius, validate_name
 from app.core.i18n import MESSAGES
-
+from enum import Enum
 
 class RegistrationBaseSchema(BaseModel):
     name_en: str

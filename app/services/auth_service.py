@@ -128,7 +128,8 @@ class AuthService:
             await db.commit()
             # await db.refresh(user)
 
-            # TODO: add user to cache
+            # add user to cache
+            UserCacheService.set(str(result.user_id), user)
 
             logger.success(f"Seeker registered: {user.id}")
             return result
@@ -209,6 +210,12 @@ class AuthService:
                 user_id=user.id
             )
 
+            if (len(data.skill_ids) == 0):
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=t("skill_ids_required", lang),
+                )
+            
             await provider_repo.add_skills(user.id, data.skill_ids)
 
             # create and store tokens
@@ -223,7 +230,9 @@ class AuthService:
             )
 
             await db.commit()
-            # TODO: add user to cache
+
+            # add user to cache
+            UserCacheService.set(str(result.user_id), user)
 
             logger.success(f"Provider registered: {user.id}")
             return result
@@ -293,7 +302,9 @@ class AuthService:
             )
 
         # 2. Verify password
-        if not Security.verify_password(password, user.password_hash):
+        is_valid_password = await Security.verify_password_async(password, user.password_hash)
+        # if not Security.verify_password(password, user.password_hash):
+        if not is_valid_password:
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail=t("invalid_credentials", lang),
@@ -319,7 +330,7 @@ class AuthService:
         )
 
         await db.commit()
-        # TODO: add user to cache
+        UserCacheService.set(str(result.user_id), user)
 
         logger.success(
             f"User logged in: {user.id} | role: {user.role.value}")

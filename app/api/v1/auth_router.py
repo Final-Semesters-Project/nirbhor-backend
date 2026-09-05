@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
+from fastapi import APIRouter, Depends, Header, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
 from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
-from app.core.exceptions import DomainIntegrityError
-from app.core.i18n import MESSAGES, get_lang, t, make_validated_body
+from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.auth_schema import (
