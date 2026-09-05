@@ -75,27 +75,18 @@ async def password_login(
     return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
 
 
-
-
-class FCMTokenRequest(BaseModel):
-    token: str
-    device_type: str | None = None
-
 @router.post("/fcm/token", status_code=201)
 async def register_fcm_token(
-    data: FCMTokenRequest,
+    token: str,
+    device_info: str | None = Depends(get_device_info),   # ANDROID, IOS, WEB 
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Called by Flutter/React after login to register the device FCM token."""
-    dev_type = data.device_type.lower() if data.device_type else "android"
-    if dev_type not in ["android", "ios", "web"]:
-        dev_type = "android"
-
     return await AuthService.register_fcm_token(
         user_id=current_user.id,
-        token=data.token,
-        device_type=dev_type,
+        token=token,
+        device_type=device_info,
         db=db,
     )
 
