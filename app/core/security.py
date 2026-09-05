@@ -1,3 +1,5 @@
+import secrets
+import asyncio
 from passlib.context import CryptContext
 from fastapi import HTTPException, status
 from jose import jwt, JWTError, ExpiredSignatureError
@@ -24,8 +26,17 @@ class Security:
         plain_password: str,  # from request
         hashed_password: str  # from db
     ) -> bool:
-
         return password_context.verify(plain_password, hashed_password)
+
+    @staticmethod
+    async def verify_password_async(plain_password: str, hashed_password: str) -> bool:
+        return await asyncio.to_thread(
+            Security.verify_password, plain_password, hashed_password
+        )
+
+    @staticmethod
+    async def hash_password_async(password: str) -> str:
+        return await asyncio.to_thread(Security.hash_password, password)
 
     # create access token
     @staticmethod
@@ -67,6 +78,8 @@ class Security:
         payload = {
             "sub": str(subject),
             "type": "refresh",
+            # jti(JWT ID) is unique ID per token - fixes duplicate constraint. Prevents error when same user re-generates token at the same millisecond
+            "jti": secrets.token_hex(16),
             "iat": int(datetime.now(timezone.utc).timestamp()),
             "exp": int(expire.timestamp()),
         }

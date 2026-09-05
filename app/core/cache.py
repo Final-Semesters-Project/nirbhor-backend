@@ -1,4 +1,5 @@
 from cachetools import TTLCache
+from loguru import logger
 from app.models.user_model import User
 from datetime import datetime, timezone
 

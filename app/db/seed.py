@@ -1,10 +1,13 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
 from app.models.category_model import Category
+from app.models.provider_profile_model import ProviderProfile
+from app.models.provider_skill_link_model import ProviderSkillLink
 from app.models.skill_model import Skill
 from loguru import logger
 from app.core.security import Security
 from app.models.user_model import Role, User
+from datetime import datetime, timedelta, timezone
 
 
 async def seed_categories_and_skills(db: AsyncSession) -> None:
@@ -75,7 +78,7 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
             db.add(skill)
 
     await db.commit()
-    print("✅ Seed data inserted successfully")
+    logger.success("✅ Seed data inserted successfully")
 
 
 async def create_admin_user(db: AsyncSession) -> None:
@@ -93,4 +96,101 @@ async def create_admin_user(db: AsyncSession) -> None:
     )
     db.add(admin)
     await db.commit()
-    print("✅ Admin user created successfully")
+    logger.success("✅ Admin user created successfully")
+
+
+async def seed_load_test_seeker(db: AsyncSession) -> None:
+    """Creates test accounts for load testing. Run before locust."""
+    from app.core.security import Security
+
+    # check if already seeded
+    existing = await db.execute(select(User).where(User.phone_en == "01700000001"))
+    if existing.scalar_one_or_none():
+        logger.info("Load test seeker already seeded. Skipping...")
+        return
+
+    password_hash = Security.hash_password("password123")
+    seekers_to_add = []
+
+    for i in range(1, 11):
+        # Generates: "01700000001", "01700000002", ..., "01700000010"
+        phone = f"017000000{i:02d}"
+
+        seeker = User(
+            phone_en=phone,
+            password_hash=password_hash,
+            role=Role.SEEKER,
+            name_en=f"Load Test Seeker {i}",
+            name_bn=f"লোড টেস্ট সিকার {i}",
+            is_active=True,
+            preferred_lang="en",
+            last_active_at=datetime.now(timezone.utc),
+            created_at=datetime.now(timezone.utc),
+        )
+        seekers_to_add.append(seeker)
+
+    db.add_all(seekers_to_add)
+
+    await db.commit()
+    logger.success("✅ 10 Load test Seeker created successfully")
+
+
+async def seed_load_test_provider(db: AsyncSession) -> None:
+    """Creates test accounts for load testing. Run before locust."""
+    from app.core.security import Security
+    from geoalchemy2.shape import from_shape
+    from shapely.geometry import Point
+
+    # check if already seeded
+    existing = await db.execute(select(User).where(User.phone_en == "01800000001"))
+    if existing.scalar_one_or_none():
+        logger.info("Load test provider already seeded. Skipping...")
+        return
+
+    first_skill = await db.scalar(select(Skill).limit(1))
+    password_hash = Security.hash_password("password123")
+    now = datetime.now(timezone.utc)
+
+    for i in range(1, 11):
+        phone = f"018000000{i:02d}"
+
+        provider = User(
+            phone_en=phone,
+            password_hash=password_hash,
+            role=Role.PROVIDER,
+            name_en=f"Load Test Provider {i}",
+            name_bn=f"লোড টেস্ট প্রোভাইডার {i}",
+            is_active=True,
+            preferred_lang="bn",
+            last_active_at=now,
+            created_at=now,
+        )
+        db.add(provider)
+        await db.flush()  # Generates provider.id
+
+        # Profile setup (Slightly shifts coordinates so they aren't stacked on top of each other)
+        profile = ProviderProfile(
+            user_id=provider.id,
+            base_location=from_shape(
+                Point(90.3950 + (i * 0.001), 23.7540 + (i * 0.001)), srid=4326),
+            location_updated_at=now - timedelta(days=20),
+            working_radius_km=5,
+            radius_updated_at=now - timedelta(days=20),
+            has_smartphone=True,
+            is_available=True,
+            warning_status=False,
+        )
+        db.add(profile)
+
+        # Skill Link setup
+        if first_skill:
+            link = ProviderSkillLink(
+                provider_id=provider.id,
+                skill_id=first_skill.id,
+            )
+            db.add(link)
+
+    await db.commit()
+    logger.success(
+        "✅ 10 Load test Providers + profiles + skill links created successfully"
+    )

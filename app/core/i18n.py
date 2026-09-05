@@ -91,6 +91,7 @@ MESSAGES = {
         "can_not_dismiss_report": "Cannot dismiss a report where action has already been taken.",
         "can_not_set_under_investigation": "Can only investigate new, pending reports now.",
         "logout_successful": "Logout successful.",
+        "skill_ids_required": "Minimum of 1 skill is required.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -146,7 +147,6 @@ MESSAGES = {
         "add_skills_to_provider_failed": "দক্ষতা যুক্ত করা ব্যর্থ হয়েছে। পুনরায় চেষ্টা করুন।",
         "new_skill_added": "নতুন দক্ষতা সফলভাবে যুক্ত হয়েছে।",
         "internal_server_error": "অভ্যন্তরীণ সার্ভার ত্রুটি। পুনরায় চেষ্টা করুন।",
-        "empty_data": "কোন তথ্য প্রদান করা হয়নি।",
         "nid_already_verified": "এনআইডি ইতিমধ্যে যাচাই করা হয়েছে। পুনরায় আপলোড করা যাবে না।",
         "booking_wrong_status": "এই বুকিং এখন আপডেট করা যাবে না।",
         "can_not_update_booking": "এই বুকিং আপডেট করার অনুমতি নেই।",
@@ -178,6 +178,7 @@ MESSAGES = {
         "can_not_dismiss_report": "এমন একটি রিপোর্ট খারিজ করা যাবে না যেখানে ইতিমধ্যে ব্যবস্থা নেওয়া হয়েছে৷",
         "can_not_set_under_investigation": "এখন শুধুমাত্র নতুন, পেন্ডিং রিপোর্ট তদন্ত করতে পারেন।",
         "logout_successful": "লগআউট সফল হয়েছে।",
+        "skill_ids_required": "কমপক্ষে ১টি দক্ষতা নির্বাচন করুন।",
     }
 }
 
