@@ -1,4 +1,7 @@
 from pydantic import BaseModel
+from datetime import datetime
+from enum import Enum
+from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field, ValidationInfo
 import re
 from uuid import UUID
@@ -92,6 +95,7 @@ class RefreshTokenSchema(BaseModel):
 class LogoutSchema(BaseModel):
     refresh_token: str
     fcm_token: str | None = None   # optional: also clear this device's FCM token
+
 
 class DeviceType(str, Enum):
     ANDROID = "android"
