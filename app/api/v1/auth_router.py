@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, Header, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
+from pydantic import BaseModel
 from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
@@ -76,13 +77,12 @@ async def password_login(
 
 @router.post("/fcm/token", status_code=201)
 async def register_fcm_token(
-    # token: str,
-    # device_info: str | None = Depends(get_device_info),   # ANDROID, IOS, WEB
     data: FCMTokenRequest,
-    current_user: User = Depends(get_current_seeker or get_current_provider),
+    current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Called by Flutter/React after login to register the device FCM token."""
+
     return await AuthService.register_fcm_token(
         user_id=current_user.id,
         token=data.token,
