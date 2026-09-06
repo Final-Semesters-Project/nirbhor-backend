@@ -7,6 +7,7 @@ class ProviderSearchResult(BaseModel):
     """One provider card returned from the search endpoint."""
     user_id: UUID
     name: str                       # localized (en or bn)
+    photo_url: str | None
     skill_name: str          # localized skill names
     verification_level: str
     average_rating: float | None
