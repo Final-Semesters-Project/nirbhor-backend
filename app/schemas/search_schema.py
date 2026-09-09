@@ -16,7 +16,7 @@ class ProviderSearchResult(BaseModel):
     has_smartphone: bool
     is_available: bool
     last_active_at: datetime | None
-    # phone is intentionally excluded — revealed only after booking initiation
+    phone_en: str | None
 
     # model_config = ConfigDict(from_attributes=True)
 

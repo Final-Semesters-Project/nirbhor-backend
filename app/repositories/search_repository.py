@@ -16,6 +16,7 @@ class ProviderSearchRow:
     """Mirrors exactly the columns selected in find_providers query."""
     user_id: UUID
     name: str
+    phone_en: str
     photo_url: str | None
     last_active_at: datetime | None
     working_radius_km: int
@@ -133,6 +134,7 @@ class SearchRepository:
             select(
                 User.id.label("user_id"),
                 name_col.label("name"),
+                User.phone_en,
                 ProviderProfile.photo_url,
                 User.last_active_at,
                 ProviderProfile.working_radius_km,

@@ -66,6 +66,7 @@ class SearchService:
             ProviderSearchResult(
                 user_id=r.user_id,
                 name=r.name,
+                phone_en=r.phone_en,
                 photo_url=r.photo_url,
                 skill_name=skills_name,
                 verification_level=r.verification_level.value,
