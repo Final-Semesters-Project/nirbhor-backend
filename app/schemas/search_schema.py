@@ -8,6 +8,7 @@ class ProviderSearchResult(BaseModel):
     user_id: UUID
     name: str                       # localized (en or bn)
     photo_url: str | None
+    # phone is intentionally excluded — revealed only after booking initiation
     skill_name: str          # localized skill names
     verification_level: str
     average_rating: float | None
@@ -16,9 +17,6 @@ class ProviderSearchResult(BaseModel):
     has_smartphone: bool
     is_available: bool
     last_active_at: datetime | None
-    # phone is intentionally excluded — revealed only after booking initiation
-
-    # model_config = ConfigDict(from_attributes=True)
 
 
 class ProviderSearchResponse(BaseModel):
