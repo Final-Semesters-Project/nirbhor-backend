@@ -6,13 +6,14 @@ from app.core.i18n import get_lang
 from app.api.dependencies import get_current_seeker
 from app.models.user_model import User
 from app.core.i18n import t
+from app.schemas.search_schema import ProviderSearchResponse
 from app.services.search_service import SearchService
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
 # TODO: add pagination
-@router.get("/providers")
+@router.get("/providers", response_model=ProviderSearchResponse)
 async def search_providers(
     skill_id: int = Query(..., description="Skill ID selected from dropdown"),
     seeker_lat: float = Query(..., description="Seeker's current latitude"),
