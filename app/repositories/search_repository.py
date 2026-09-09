@@ -16,6 +16,7 @@ class ProviderSearchRow:
     """Mirrors exactly the columns selected in find_providers query."""
     user_id: UUID
     name: str
+    photo_url: str | None
     last_active_at: datetime | None
     working_radius_km: int
     verification_level: VerificationLevel
@@ -138,6 +139,7 @@ class SearchRepository:
                 ProviderProfile.average_rating,
                 ProviderProfile.has_smartphone,
                 ProviderProfile.is_available,
+                ProviderProfile.photo_url,
                 distance_km.label("distance_km"),
                 ranking_score.label("score"),
             )
