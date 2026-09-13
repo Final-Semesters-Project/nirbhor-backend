@@ -9,8 +9,12 @@ from loguru import logger
 from app.core.config import settings
 
 
+# password_context = CryptContext(
+#     schemes=["argon2", "bcrypt"], deprecated="auto")
+
 password_context = CryptContext(
-    schemes=["argon2", "bcrypt"], deprecated="auto")
+    schemes=["argon2"], # argon2 only, no bcrypt fallback. If bcrypt is needed, use bcrypt==4.2.1 
+    deprecated="auto")
 
 
 class Security:
