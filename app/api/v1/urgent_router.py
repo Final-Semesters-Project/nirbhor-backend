@@ -1,7 +1,5 @@
-
 from uuid import UUID
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
@@ -9,7 +7,7 @@ from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
 from app.services.urgent_service import UrgentService
-
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
 
@@ -19,7 +17,9 @@ router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
     response_model=UrgentBroadcastCreateResponse,
     status_code=201
 )
+@limiter.limit("3/minute") # prevent broadcast spam
 async def create_urgent_broadcast(
+    request: Request,
     data: UrgentBroadcastCreateSchema,
     current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
