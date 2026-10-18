@@ -15,7 +15,6 @@ tests/
 *.md
 docker-compose*.yml
 Dockerfile.dev
-entrypoint.sh
 serviceAccountKey.json
 .gitattributes
 locustfile.py
