@@ -92,6 +92,7 @@ MESSAGES = {
         "can_not_set_under_investigation": "Can only investigate new, pending reports now.",
         "logout_successful": "Logout successful.",
         "skill_ids_required": "Minimum of 1 skill is required.",
+        "invalid_booking_cost": "Cost must be greater than 0tk.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -179,6 +180,7 @@ MESSAGES = {
         "can_not_set_under_investigation": "এখন শুধুমাত্র নতুন, পেন্ডিং রিপোর্ট তদন্ত করতে পারেন।",
         "logout_successful": "লগআউট সফল হয়েছে।",
         "skill_ids_required": "কমপক্ষে ১টি দক্ষতা নির্বাচন করুন।",
+        "invalid_booking_cost": "বুকিং খরচ অবশ্যই ০ টাকা হতে বেশি হতে হবে।",
     }
 }
 

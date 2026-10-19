@@ -1,7 +1,7 @@
 from app.db.base import Base
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
-from sqlalchemy import Index, Integer, String, ForeignKey, Enum as sqlEnum, DateTime
+from sqlalchemy import CheckConstraint, Float, Index, ForeignKey, Enum as sqlEnum, DateTime
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
@@ -19,6 +19,11 @@ class BookingStatus(str, enum.Enum):
 
 class Booking(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "bookings"
+
+    __table_args__ = (
+        # New constraint for final cost validation
+        CheckConstraint("final_cost IS NULL OR final_cost > 0", name="ck_booking_final_cost_positive"),
+    )
 
     seeker_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
@@ -87,6 +92,13 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     completed_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True
+    )
+
+    # cost
+    final_cost: Mapped[float] = mapped_column(
+        Float,
+        nullable=True,
+        default=None,
     )
 
     # PostGIS point — stores (longitude, latitude)

@@ -90,4 +90,8 @@ def parse_integrity_error(error_msg: str, lang: str = "en") -> str:
     if "UniqueViolationError" in error_msg:
         return t("unique_violation", lang)
 
+    # ── Check violations ───────────────────────────────────────────
+    if "ck_booking_final_cost_positive" in error_msg:
+        return t("invalid_booking_cost", lang)  # e.g. "Cost must be greater than 0 taka."
+
     return t("integrity_error", lang)
