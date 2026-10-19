@@ -1,5 +1,6 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.models.category_model import Category
 from app.models.provider_profile_model import ProviderProfile
 from app.models.provider_skill_link_model import ProviderSkillLink
@@ -81,22 +82,62 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
     logger.success("✅ Seed data inserted successfully")
 
 
-async def create_admin_user(db: AsyncSession) -> None:
-    existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
-    if existing.scalar_one_or_none():
-        logger.info("Admin already seeded. Skipping...")
-        return
-    admin = User(
-        phone_en="01700000000",
-        password_hash=Security.hash_password("admin123"),
-        role=Role.ADMIN,
-        name_en="Admin",
-        name_bn="অ্যাডমিন",
-        is_active=True,
-    )
-    db.add(admin)
+async def create_admin_users(db: AsyncSession) -> None:
+    """
+    creates admin and super_admin
+    """
+    accounts = [
+        {
+            "phone": settings.ADMIN_PHONE,
+            "password": settings.ADMIN_PASSWORD.get_secret_value(),
+            "role": Role.ADMIN,
+            "name_en": "Admin 1",
+            "name_bn": "অ্যাডমিন ১",
+        },
+        {
+            "phone": settings.SUPER_ADMIN_PHONE,
+            "password": settings.SUPER_ADMIN_PASSWORD.get_secret_value(),
+            "role": Role.SUPER_ADMIN,
+            "name_en": "Super Admin",
+            "name_bn": "সুপার অ্যাডমিন",
+        },
+    ]
+
+    for account in accounts:
+        existing = await db.scalar(
+            select(User).where(User.phone_en == account["phone"]))
+        if existing:
+            continue
+
+        user = User(
+            phone_en=account["phone"],
+            password_hash=Security.hash_password(account["password"]),
+            role=account["role"],
+            name_en=account["name_en"],
+            name_bn=account["name_bn"],
+            is_active=True,
+            preferred_lang="en",
+            created_at=datetime.now(timezone.utc),
+            last_active_at=datetime.now(timezone.utc),
+        )
+
+        db.add(user)
+
+    # existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
+    # if existing.scalar_one_or_none():
+    #     logger.info("Admin already seeded. Skipping...")
+    #     return
+    # admin = User(
+    #     phone_en=settings.ADMIN_PHONE,
+    #     password_hash=Security.hash_password(settings.ADMIN_PASSWORD.get_secret_value()),
+    #     role=Role.ADMIN,
+    #     name_en="Admin",
+    #     name_bn="অ্যাডমিন",
+    #     is_active=True,
+    # )
+    # db.add(admin)
     await db.commit()
-    logger.success("✅ Admin user created successfully")
+    logger.success("✅ Admin & super admin created successfully from seed data")
 
 
 async def seed_load_test_seeker(db: AsyncSession) -> None:

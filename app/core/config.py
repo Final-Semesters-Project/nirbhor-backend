@@ -21,6 +21,12 @@ class Settings(BaseSettings):
     CLOUDINARY_API_KEY: str
     CLOUDINARY_API_SECRET: str
 
+    ADMIN_PHONE: str
+    ADMIN_PASSWORD: SecretStr
+
+    SUPER_ADMIN_PHONE: str
+    SUPER_ADMIN_PASSWORD: SecretStr
+
     ANTHROPIC_API_KEY: str = ""
 
     APP_ENV: str

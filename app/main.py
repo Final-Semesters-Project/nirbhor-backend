@@ -6,7 +6,7 @@ from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
 from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
-from app.db.seed import seed_categories_and_skills, create_admin_user, seed_load_test_provider, seed_load_test_seeker
+from app.db.seed import seed_categories_and_skills, create_admin_users, seed_load_test_provider, seed_load_test_seeker
 from app.db.session import AsyncSessionLocal
 
 # TODO: use UptimeRobot to keep Render app alive
@@ -22,7 +22,7 @@ async def lifespan(app: FastAPI):
 
     async with AsyncSessionLocal() as db:
         await seed_categories_and_skills(db)
-        await create_admin_user(db)
+        await create_admin_users(db)
         await seed_load_test_seeker(db)
         await seed_load_test_provider(db)
 
