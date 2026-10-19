@@ -1,4 +1,6 @@
 from loguru import logger
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1.router import api_router
 from fastapi import FastAPI
 from app.core.cloudinary_helpers import init_cloudinary
@@ -8,6 +10,7 @@ from contextlib import asynccontextmanager
 from app.core.logging import setup_logging
 from app.db.seed import seed_categories_and_skills, create_admin_users, seed_load_test_provider, seed_load_test_seeker
 from app.db.session import AsyncSessionLocal
+from app.core.rate_limiter import limiter, rate_limit_exceeded_handler
 
 # TODO: use UptimeRobot to keep Render app alive
 
@@ -135,15 +138,26 @@ if ENV == "staging" and settings.STAGING_API_KEY is not None:
     )
 
 
+
+# add limiter to app state - slowapi reads it from here
+app.state.limiter = limiter
+
+
+# register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
+register_exception_handlers(app)
+
+# register the 429 handler
+app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
+
+
+# add the middleware 
+app.add_middleware(SlowAPIMiddleware)
+
 # add this to wake up the server
 @app.get("/")
 @app.head("/")
 async def root():
     return {"status": "awake"}
-
-
-# register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
-register_exception_handlers(app)
 
 app.include_router(api_router, prefix="/api/v1")
 

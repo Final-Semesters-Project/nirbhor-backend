@@ -15,6 +15,7 @@ from app.schemas.auth_schema import (
     AuthResponseSchema,
 )
 from app.services.auth_service import AuthService
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -30,7 +31,9 @@ def get_device_info(request: Request) -> str | None:
     status_code=status.HTTP_201_CREATED,
     summary="Register a new seeker account"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_seeker(
+    request: Request, # slowapi needs this
     response: Response,
     data: SeekerRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -46,7 +49,9 @@ async def register_seeker(
     status_code=status.HTTP_201_CREATED,
     summary="Register a new provider account(Transaction = user + profile)"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_provider(
+    request: Request, # slowapi needs this
     response: Response,
     data: ProviderRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -65,7 +70,9 @@ async def register_provider(
     status_code=status.HTTP_200_OK,
     summary="Login with phone number and password",
 )
+@limiter.limit("5/minute")  # limit to 5 requests per minute
 async def password_login(
+    request: Request, # slowapi needs this
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db_session),
