@@ -122,14 +122,17 @@ class AdminService:
 
             await db.commit()
 
+            verification_actions = {
+                VerificationStatus.APPROVED: "approved_verification",
+                VerificationStatus.REJECTED: "rejected_verification",
+                VerificationStatus.NOT_INITIATED: "verification_not_initiated",
+                VerificationStatus.PENDING: "pending_verification",
+            }
+
             await super_repo.write_audit_log(
                 admin_id=current_admin_id,  # pass this through from the router
                 admin_role="admin",
-                action=(
-                    "approve_verification"
-                    if data.verification_status == "approved"
-                    else "reject_verification"
-                ),
+                action=verification_actions[data.verification_status],
                 target_user_id=provider_id,
                 details=(
                     data.rejection_reason
