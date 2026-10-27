@@ -6,8 +6,10 @@ from loguru import logger
 from app.core.cache import UserCacheService
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.provider_profile_model import VerificationStatus
+from app.models.user_model import Role, User
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.super_admin_repository import SuperAdminRepository
 from app.schemas.admin_schema import (
     AdminDashboardResponse,
     VerificationListItem,
@@ -65,10 +67,8 @@ class AdminService:
                 name=user.name_en,
                 phone=user.phone_en,
                 photo_url=profile.photo_url,
-                nid_url_front=AdminService.get_signed_nid_url(
-                    profile.nid_url_front),
-                nid_url_back=AdminService.get_signed_nid_url(
-                    profile.nid_url_back),
+                nid_url_front=AdminService.get_signed_nid_url(profile.nid_url_front),
+                nid_url_back=AdminService.get_signed_nid_url(profile.nid_url_back),
                 verification_level=profile.verification_level.value,
                 verification_status=profile.verification_status.value,
                 submitted_at=profile.updated_at or profile.created_at,
@@ -85,12 +85,14 @@ class AdminService:
     @staticmethod
     async def handle_verification(
         provider_id: UUID,
+        current_admin_id: UUID,
         data: VerificationActionSchema,
         db: AsyncSession,
         lang: str,
     ) -> VerificationActionResponse:
         admin_repo = AdminRepository(db)
         provider_repo = ProviderRepository(db)
+        super_repo = SuperAdminRepository(db)
 
         provider_profile = await provider_repo.get_by_id(provider_id)
 
@@ -99,17 +101,19 @@ class AdminService:
 
         try:
             if data.verification_status == VerificationStatus.APPROVED:
-                updated_provider_profile = await admin_repo.approve_verification(provider_profile)
+                updated_provider_profile = await admin_repo.approve_verification(
+                    provider_profile
+                )
 
-                logger.info(
-                    f"Admin approved verification for provider {provider_id}")
+                logger.info(f"Admin approved verification for provider {provider_id}")
                 # TODO: send FCM to provider — "Your account is now verified!"
             else:
                 if not data.rejection_reason:
-                    raise DomainValidationError(
-                        t("rejection_reason_required", lang))
+                    raise DomainValidationError(t("rejection_reason_required", lang))
 
-                updated_provider_profile = await admin_repo.reject_verification(provider_profile=provider_profile, reason=data.rejection_reason)
+                updated_provider_profile = await admin_repo.reject_verification(
+                    provider_profile=provider_profile, reason=data.rejection_reason
+                )
                 logger.info(
                     f"Admin rejected verification for provider {provider_id}: "
                     f"{data.rejection_reason}"
@@ -117,6 +121,22 @@ class AdminService:
                 # TODO: send FCM to provider — "Your verification was rejected: {reason}"
 
             await db.commit()
+
+            await super_repo.write_audit_log(
+                admin_id=current_admin_id,  # pass this through from the router
+                admin_role="admin",
+                action=(
+                    "approve_verification"
+                    if data.verification_status == "approved"
+                    else "reject_verification"
+                ),
+                target_user_id=provider_id,
+                details=(
+                    data.rejection_reason
+                    if data.verification_status == "rejected"
+                    else None
+                ),
+            )
 
             return VerificationActionResponse(
                 user_id=provider_id,
@@ -143,21 +163,18 @@ class AdminService:
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
                 logger.warning(
-                    f"FK violation in provider verification update by admin: {raw}")
-                raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
+                    f"FK violation in provider verification update by admin: {raw}"
                 )
+                raise DomainValidationError(error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(
-                    f"Unique violation in provider verification update by admin: {raw}")
-                raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
+                    f"Unique violation in provider verification update by admin: {raw}"
                 )
+                raise DomainIntegrityError(error_message=readable, raw_error=raw)
 
             logger.error(
-                f"IntegrityError in provider verification update by admin: {raw}")
+                f"IntegrityError in provider verification update by admin: {raw}"
+            )
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -165,7 +182,8 @@ class AdminService:
         except Exception as e:
             await db.rollback()
             logger.error(
-                f"Unexpected error in provider verification update by admin: {e}")
+                f"Unexpected error in provider verification update by admin: {e}"
+            )
             raise
 
     @staticmethod
@@ -223,9 +241,7 @@ class AdminService:
         elif data.status == ReportStatus.UNDER_INVESTIGATION:
             if report.status != ReportStatus.PENDING:
                 raise DomainValidationError("can_not_set_under_investigation")
-            logger.info(
-                f"Admin marked report {report_id} as under investigation"
-            )
+            logger.info(f"Admin marked report {report_id} as under investigation")
 
         await admin_repo.update_report_status(report, data.status)
         await db.commit()
@@ -295,21 +311,30 @@ class AdminService:
         )
 
     @staticmethod
-    async def toggle_user_active(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> dict:
+    async def toggle_user_active(user_id: UUID, db: AsyncSession, lang: str) -> dict:
         repo = AdminRepository(db)
-        user = await repo.toggle_user_active(user_id)
+
+        # First check if user is a super_admin — regular admins cannot touch them
+        user = await db.get(User, user_id)
+
         if not user:
             raise DomainValidationError(t("user_not_found", lang))
-        await db.commit()
-        logger.info(
-            f"Admin toggled user {user_id} is_active → {user.is_active}"
-        )
+
+        if user.role == Role.SUPER_ADMIN:
+            raise DomainValidationError(t("admin_only", lang))  # 400 — access denied
+
+        toggled = await repo.toggle_user_active(user_id)
+
+        if toggled is None:
+            raise DomainValidationError(t("user_not_found", lang))
 
         UserCacheService.invalidate(str(user_id))
+
+        await db.commit()
+        logger.info(f"Admin toggled user {user_id} is_active → {user.is_active}")
+
         return {
             "user_id": user_id,
-            "is_active": user.is_active,
+            "is_active": toggled.is_active,
             "message": t("user_status_updated", lang),
         }

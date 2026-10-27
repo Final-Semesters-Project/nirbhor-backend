@@ -3,6 +3,7 @@ from typing import Type, TypeVar
 from fastapi import Depends, Request
 from loguru import logger
 from pydantic import BaseModel
+
 # Translation Dictionary for messages
 
 MESSAGES = {
@@ -62,7 +63,7 @@ MESSAGES = {
         "internal_server_error": "Internal server error. Please try again.",
         "nid_already_verified": "NID already verified. Can not upload again.",
         "booking_wrong_status": "This booking cannot be updated at this stage.",
-        "can_not_update_booking":  "You are not authorized to update this booking.",
+        "can_not_update_booking": "You are not authorized to update this booking.",
         "too_many_open_bookings": "You can unlock up to 10 provider numbers at a time. Please wait 2 hours before unlocking more.",
         "provider_unavailable": "This provider is currently unavailable.",
         "broadcast_not_found": "Broadcast not found or already expired.",
@@ -93,6 +94,7 @@ MESSAGES = {
         "logout_successful": "Logout successful.",
         "skill_ids_required": "Minimum of 1 skill is required.",
         "invalid_booking_cost": "Cost must be greater than 0tk.",
+        "super_admin_only": "Super admin access required.",
     },
     "bn": {
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
@@ -181,7 +183,8 @@ MESSAGES = {
         "logout_successful": "লগআউট সফল হয়েছে।",
         "skill_ids_required": "কমপক্ষে ১টি দক্ষতা নির্বাচন করুন।",
         "invalid_booking_cost": "বুকিং খরচ অবশ্যই ০ টাকা হতে বেশি হতে হবে।",
-    }
+        "super_admin_only": "সুপার অ্যাডমিন অ্যাক্সেস প্রয়োজন।",
+    },
 }
 
 # =========================== Translation ===========================
@@ -228,6 +231,7 @@ def make_validated_body(schema_class: Type[T]):
     Usage:
         data: SeekerRegisterSchema = Depends(make_validated_body(SeekerRegisterSchema))
     """
+
     async def dependency(
         request: Request,
         lang: str = Depends(get_lang),
