@@ -3,7 +3,7 @@ from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
+from app.api.dependencies import get_current_user
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
@@ -15,6 +15,7 @@ from app.schemas.auth_schema import (
     AuthResponseSchema,
 )
 from app.services.auth_service import AuthService
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -30,6 +31,7 @@ def get_device_info(request: Request) -> str | None:
     status_code=status.HTTP_201_CREATED,
     summary="Register a new seeker account"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_seeker(
     response: Response,
     data: SeekerRegisterSchema,
@@ -46,6 +48,7 @@ async def register_seeker(
     status_code=status.HTTP_201_CREATED,
     summary="Register a new provider account(Transaction = user + profile)"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_provider(
     response: Response,
     data: ProviderRegisterSchema,
@@ -65,6 +68,7 @@ async def register_provider(
     status_code=status.HTTP_200_OK,
     summary="Login with phone number and password",
 )
+@limiter.limit("5/minute")  # limit to 5 requests per minute
 async def password_login(
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
