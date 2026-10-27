@@ -33,6 +33,7 @@ def get_device_info(request: Request) -> str | None:
 )
 @limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_seeker(
+    request: Request,
     response: Response,
     data: SeekerRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -50,6 +51,7 @@ async def register_seeker(
 )
 @limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_provider(
+    request: Request,
     response: Response,
     data: ProviderRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -70,6 +72,7 @@ async def register_provider(
 )
 @limiter.limit("5/minute")  # limit to 5 requests per minute
 async def password_login(
+    request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db_session),
