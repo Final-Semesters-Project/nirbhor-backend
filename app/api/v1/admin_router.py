@@ -4,7 +4,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
-from app.api.dependencies import get_current_admin
+from app.api.dependencies import get_current_admin_or_super_admin
 from app.models.user_model import User, Role
 from app.schemas.admin_schema import (
     AdminDashboardResponse,
@@ -29,7 +29,7 @@ router = APIRouter(prefix="/admin", tags=["Admin Management"])
 
 @router.get("/dashboard", response_model=AdminDashboardResponse)
 async def admin_dashboard(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
     return await AdminService.get_dashboard(db=db)
@@ -41,7 +41,7 @@ async def admin_dashboard(
 # TODO: add pagination
 @router.get("/pendingVerifications", response_model=list[VerificationListItem])
 async def list_pending_verifications(
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
@@ -56,7 +56,7 @@ async def list_pending_verifications(
 async def handle_verification(
     provider_id: UUID,
     data: VerificationActionSchema,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
@@ -84,7 +84,7 @@ async def list_reports(
     status: str | None = Query(
         None, description="Filter: pending, reviewed, action_taken"
     ),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     # lang: str = Depends(get_lang),
 ):
@@ -95,7 +95,7 @@ async def list_reports(
 async def handle_report(
     report_id: UUID,
     data: ReportActionSchema,
-    _: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
@@ -106,6 +106,7 @@ async def handle_report(
     """
     return await AdminService.handle_report(
         report_id=report_id,
+        current_admin_id=current_user.id,
         data=data,
         db=db,
         lang=lang,
@@ -120,7 +121,7 @@ async def handle_report(
 async def list_users(
     role: Role | None = Query(None, description="Filter: seeker, provider, admin"),
     is_active: bool | None = Query(None, description="Filter by active status"),
-    _: User = Depends(get_current_admin),
+    _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
     return await AdminService.get_users(
@@ -131,7 +132,7 @@ async def list_users(
 @router.get("/users/{user_id}", response_model=AdminUserDetail)
 async def get_user_detail(
     user_id: UUID,
-    _: User = Depends(get_current_admin),
+    _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
@@ -141,7 +142,7 @@ async def get_user_detail(
 @router.patch("/users/{user_id}/toggle", status_code=200)
 async def toggle_user_active(
     user_id: UUID,
-    _: User = Depends(get_current_admin),
+    _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
@@ -154,7 +155,7 @@ async def toggle_user_active(
 
 @router.get("/analytics", response_model=AdminAnalyticsResponse)
 async def get_analytics(
-    _: User = Depends(get_current_admin),
+    _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
     """Stats for admin dashboard — totals, ratios, weekly booking graph data."""

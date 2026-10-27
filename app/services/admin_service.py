@@ -211,11 +211,13 @@ class AdminService:
     @staticmethod
     async def handle_report(
         report_id: UUID,
+        current_admin_id: UUID,
         data: ReportActionSchema,
         db: AsyncSession,
         lang: str,
     ) -> ReportActionResponse:
         admin_repo = AdminRepository(db)
+        super_repo = SuperAdminRepository(db)
 
         report = await admin_repo.get_report_by_id(report_id)
         if not report:
@@ -244,6 +246,22 @@ class AdminService:
             logger.info(f"Admin marked report {report_id} as under investigation")
 
         await admin_repo.update_report_status(report, data.status)
+
+        report_actions = {
+            ReportStatus.REVIEWED: "reviewed_report",
+            ReportStatus.PENDING: "pending_report",
+            ReportStatus.UNDER_INVESTIGATION: "under_investigation",
+            ReportStatus.ACTION_TAKEN: "action_taken",
+        }
+
+        await super_repo.write_audit_log(
+            admin_id=current_admin_id,  # pass this through from the router
+            admin_role="admin",
+            action=(report_actions[data.status]),
+            target_user_id=report.reported_user_id,
+            details=data.admin_internal_notes,
+        )
+
         await db.commit()
 
         return ReportActionResponse(
