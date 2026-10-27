@@ -37,6 +37,7 @@ async def admin_dashboard(
 
 # ── Verifications ──────────────────────────────────────────────────────────────
 
+
 # TODO: add pagination
 @router.get("/pendingVerifications", response_model=list[VerificationListItem])
 async def list_pending_verifications(
@@ -66,10 +67,12 @@ async def handle_verification(
     """
     return await AdminService.handle_verification(
         provider_id=provider_id,
+        current_admin_id=current_user.id,
         data=data,
         db=db,
         lang=lang,
     )
+
 
 # ── Reports ────────────────────────────────────────────────────────────────────
 
@@ -79,7 +82,8 @@ async def handle_verification(
 @router.get("/reports", response_model=list[ReportListItem])
 async def list_reports(
     status: str | None = Query(
-        None, description="Filter: pending, reviewed, action_taken"),
+        None, description="Filter: pending, reviewed, action_taken"
+    ),
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db_session),
     # lang: str = Depends(get_lang),
@@ -110,13 +114,12 @@ async def handle_report(
 
 # ── Users ──────────────────────────────────────────────────────────────────────
 
+
 # TODO: apply pagination
 @router.get("/users", response_model=list[AdminUserListItem])
 async def list_users(
-    role: Role | None = Query(
-        None, description="Filter: seeker, provider, admin"),
-    is_active: bool | None = Query(
-        None, description="Filter by active status"),
+    role: Role | None = Query(None, description="Filter: seeker, provider, admin"),
+    is_active: bool | None = Query(None, description="Filter by active status"),
     _: User = Depends(get_current_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
@@ -132,9 +135,7 @@ async def get_user_detail(
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
-    return await AdminService.get_user_detail(
-        user_id=user_id, db=db, lang=lang
-    )
+    return await AdminService.get_user_detail(user_id=user_id, db=db, lang=lang)
 
 
 @router.patch("/users/{user_id}/toggle", status_code=200)
@@ -145,9 +146,8 @@ async def toggle_user_active(
     lang: str = Depends(get_lang),
 ):
     """Enable or disable a user account. Toggles current is_active value."""
-    return await AdminService.toggle_user_active(
-        user_id=user_id, db=db, lang=lang
-    )
+    return await AdminService.toggle_user_active(user_id=user_id, db=db, lang=lang)
+
 
 # ── Analytics ──────────────────────────────────────────────────────────────────
 

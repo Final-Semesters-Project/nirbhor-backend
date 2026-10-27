@@ -4,6 +4,7 @@ from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+
 # from app.core.cache_user import CacheService
 # from app.core.jwt import decode_access_token
 from app.core.cache import TokenBlockListService, UserCacheService
@@ -16,9 +17,9 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 
 async def get_current_user(
-        request: Request,
-        token: str = Depends(oauth2_scheme),
-        db: AsyncSession = Depends(get_db_session)
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db_session),
 ) -> User | None:
 
     credentials_exception = HTTPException(
@@ -68,8 +69,7 @@ async def get_current_user(
 
         if not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account is suspended"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is suspended"
             )
 
         # create cache
@@ -112,5 +112,16 @@ async def get_current_admin(
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint is for admins only",
+        )
+    return current_user
+
+
+async def get_current_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role != Role.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is for super admins only",
         )
     return current_user
