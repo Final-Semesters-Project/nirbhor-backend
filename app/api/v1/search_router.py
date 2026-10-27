@@ -8,12 +8,14 @@ from app.models.user_model import User
 from app.core.i18n import t
 from app.schemas.search_schema import ProviderSearchResponse
 from app.services.search_service import SearchService
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
 # TODO: add pagination
 @router.get("/providers", response_model=ProviderSearchResponse)
+@limiter.limit("30/minute") # limit to 30 requests per minute
 async def search_providers(
     skill_id: int = Query(..., description="Skill ID selected from dropdown"),
     seeker_lat: float = Query(..., description="Seeker's current latitude"),
