@@ -8,6 +8,7 @@ from sqlalchemy import select
 # from app.core.cache_user import CacheService
 # from app.core.jwt import decode_access_token
 from app.core.cache import TokenBlockListService, UserCacheService
+from app.core.exceptions import DomainValidationError
 from app.core.security import Security
 from app.db.session import get_db_session
 from app.models.user_model import User, Role
@@ -124,4 +125,13 @@ async def get_current_super_admin(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="This endpoint is for super admins only",
         )
+    return current_user
+
+
+def get_current_admin_or_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allows both admin and super_admin roles."""
+    if current_user.role not in (Role.ADMIN, Role.SUPER_ADMIN):
+        raise DomainValidationError("Admin access required.")
     return current_user
