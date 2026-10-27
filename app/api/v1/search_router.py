@@ -1,5 +1,5 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
@@ -17,6 +17,7 @@ router = APIRouter(prefix="/search", tags=["Search"])
 @router.get("/providers", response_model=ProviderSearchResponse)
 @limiter.limit("30/minute") # limit to 30 requests per minute
 async def search_providers(
+    request: Request,
     skill_id: int = Query(..., description="Skill ID selected from dropdown"),
     seeker_lat: float = Query(..., description="Seeker's current latitude"),
     seeker_lng: float = Query(..., description="Seeker's current longitude"),
