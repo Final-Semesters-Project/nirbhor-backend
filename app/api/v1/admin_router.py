@@ -114,9 +114,6 @@ async def handle_report(
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
-
-
-# TODO: apply pagination
 @router.get("/users", response_model=PageResponse[AdminUserListItem])
 async def list_users(
     page: int = Query(default=1, ge=1),

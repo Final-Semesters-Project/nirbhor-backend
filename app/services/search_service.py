@@ -11,12 +11,12 @@ AUTO_EXPAND_KM = 2
 class SearchService:
     @staticmethod
     async def find_providers(
+        db: AsyncSession,
+        lang: str,
         skill_id: int,
         seeker_lat: float,
         seeker_lng: float,
         search_radius_km: int,
-        db: AsyncSession,
-        lang: str,
     ) -> ProviderSearchResponse:
         """
         Search for providers. If none found in requested radius,
@@ -49,18 +49,14 @@ class SearchService:
             )
 
         if not rows:
-            return (
-                ProviderSearchResponse(
-                    providers=[],
-                    expanded_radius=expanded,
-                    warning=t("no_providers_found", lang),
-                )
+            return ProviderSearchResponse(
+                providers=[],
+                expanded_radius=expanded,
+                warning=t("no_providers_found", lang),
             )
 
         # get the currently searched skill name
-        skills_name = await search_repo.get_skill_name(
-            skill_id, lang
-        )
+        skills_name = await search_repo.get_skill_name(skill_id, lang)
 
         providers = [
             ProviderSearchResult(
@@ -81,11 +77,8 @@ class SearchService:
         logger.info(
             f"Found {len(providers)} providers for skill {skill_id} in radius {search_radius_km}km"
         )
-        return (
-            ProviderSearchResponse(
-                providers=providers,
-                expanded_radius=expanded,
-                warning=t("search_radius_expanded_warning",
-                          lang) if expanded else None,
-            )
+        return ProviderSearchResponse(
+            providers=providers,
+            expanded_radius=expanded,
+            warning=t("search_radius_expanded_warning", lang) if expanded else None,
         )
