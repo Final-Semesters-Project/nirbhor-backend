@@ -7,7 +7,11 @@ from sqlalchemy.orm import aliased
 from app.repositories.base_repository import BaseRepository
 from sqlalchemy import case, select, func
 from app.models.user_model import User, Role
-from app.models.provider_profile_model import ProviderProfile, VerificationLevel, VerificationStatus
+from app.models.provider_profile_model import (
+    ProviderProfile,
+    VerificationLevel,
+    VerificationStatus,
+)
 from app.models.booking_model import Booking
 from app.models.user_report_model import UserReport, ReportStatus
 
@@ -27,18 +31,18 @@ class AdminRepository(BaseRepository):
         user_counts_result = await self.db.execute(
             select(
                 func.count().label("total_users"),
+                func.count(case((User.role == Role.PROVIDER, 1))).label(
+                    "total_providers"
+                ),
+                func.count(case((User.role == Role.SEEKER, 1))).label("total_seekers"),
                 func.count(
-                    case((User.role == Role.PROVIDER, 1))
-                ).label("total_providers"),
-                func.count(
-                    case((User.role == Role.SEEKER, 1))
-                ).label("total_seekers"),
-                func.count(
-                    case((
-                        (User.role == Role.PROVIDER) &
-                        (User.last_active_at >= now - timedelta(hours=24)),
-                        1
-                    ))
+                    case(
+                        (
+                            (User.role == Role.PROVIDER)
+                            & (User.last_active_at >= now - timedelta(hours=24)),
+                            1,
+                        )
+                    )
                 ).label("active_providers_today"),
             ).select_from(User)
         )
@@ -48,13 +52,13 @@ class AdminRepository(BaseRepository):
         # asyncio.gather fires all three at the same time.
         # Total wait = slowest single query, not sum of all three.
         total_bookings, pending_verifications, pending_reports = await asyncio.gather(
-            self.db.scalar(
-                select(func.count()).select_from(Booking)
-            ),
+            self.db.scalar(select(func.count()).select_from(Booking)),
             self.db.scalar(
                 select(func.count())
                 .select_from(ProviderProfile)
-                .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
+                .where(
+                    ProviderProfile.verification_status == VerificationStatus.PENDING
+                )
             ),
             self.db.scalar(
                 select(func.count())
@@ -64,24 +68,29 @@ class AdminRepository(BaseRepository):
         )
 
         return {
-            "total_users":            (user_counts or {}).get("total_users") or 0,
-            "total_providers":        (user_counts or {}).get("total_providers") or 0,
-            "total_seekers":          (user_counts or {}).get("total_seekers") or 0,
-            "active_providers_today": (user_counts or {}).get("active_providers_today") or 0,
-            "total_bookings":         total_bookings or 0,
-            "pending_verifications":  pending_verifications or 0,
-            "pending_reports":        pending_reports or 0,
+            "total_users": (user_counts or {}).get("total_users") or 0,
+            "total_providers": (user_counts or {}).get("total_providers") or 0,
+            "total_seekers": (user_counts or {}).get("total_seekers") or 0,
+            "active_providers_today": (user_counts or {}).get("active_providers_today")
+            or 0,
+            "total_bookings": total_bookings or 0,
+            "pending_verifications": pending_verifications or 0,
+            "pending_reports": pending_reports or 0,
         }
 
     # ── Verifications ─────────────────────────────────────────────────────────
 
-    async def get_pending_verifications(self) -> Sequence:
-        result = await self.db.execute(
+    def get_pending_verifications_stmt(self):
+        return (
             select(User, ProviderProfile)
             .join(ProviderProfile, User.id == ProviderProfile.user_id)
             .where(ProviderProfile.verification_status == VerificationStatus.PENDING)
-            .order_by(ProviderProfile.updated_at.asc())   # oldest first
+            .order_by(ProviderProfile.updated_at.asc())  # oldest first
         )
+
+    # for non-paginated use if needed
+    async def get_pending_verifications(self) -> Sequence:
+        result = await self.db.execute(self.get_pending_verifications_stmt())
         return result.all()
 
     # async def get_provider_for_verification(
@@ -98,7 +107,9 @@ class AdminRepository(BaseRepository):
     #         return None
     #     return (row[0], row[1])
 
-    async def approve_verification(self, provider_profile: ProviderProfile) -> ProviderProfile:
+    async def approve_verification(
+        self, provider_profile: ProviderProfile
+    ) -> ProviderProfile:
         provider_profile.verification_status = VerificationStatus.APPROVED
         provider_profile.verification_level = VerificationLevel.VERIFIED
         provider_profile.verification_rejection_reason = None
@@ -106,9 +117,7 @@ class AdminRepository(BaseRepository):
         return provider_profile
 
     async def reject_verification(
-        self,
-        provider_profile: ProviderProfile,
-        reason: str
+        self, provider_profile: ProviderProfile, reason: str
     ) -> ProviderProfile | None:
         provider_profile.verification_status = VerificationStatus.REJECTED
         provider_profile.verification_rejection_reason = reason
@@ -117,7 +126,11 @@ class AdminRepository(BaseRepository):
 
     # ── Reports ───────────────────────────────────────────────────────────────
 
-    async def get_reports(self, status_filter: str | None = None) -> Sequence:
+    def get_reports_stmt(self, status_filter: str | None = None):
+        """
+        Joins UserReport + Reporter(User) + Reported(User).
+        Each row is a tuple → (UserReport, Reporter, Reported).
+        """
         Reporter = aliased(User, name="reporter")
         Reported = aliased(User, name="reported")
 
@@ -130,7 +143,10 @@ class AdminRepository(BaseRepository):
         if status_filter:
             stmt = stmt.where(UserReport.status == status_filter)
 
-        result = await self.db.execute(stmt)
+        return stmt
+
+    async def get_reports(self, status_filter: str | None = None) -> Sequence:
+        result = await self.db.execute(self.get_reports_stmt(status_filter))
         return result.all()
 
     async def get_report_by_id(self, report_id: UUID) -> UserReport | None:
@@ -161,17 +177,37 @@ class AdminRepository(BaseRepository):
         await self.db.flush()
         return user
 
-    async def get_users(
+    def get_users_stmt(
         self,
         role_filter: str | None = None,
         is_active_filter: bool | None = None,
-    ) -> Sequence[User]:
+    ):
+        """
+        Single model query → select(User).
+        Each row is a User object (not a tuple) → access with row.name_en etc.
+        """
         stmt = select(User).order_by(User.created_at.desc())
         if role_filter:
             stmt = stmt.where(User.role == role_filter)
         if is_active_filter is not None:
             stmt = stmt.where(User.is_active == is_active_filter)
-        result = await self.db.execute(stmt)
+        return stmt
+
+    async def get_users(
+        self,
+        role_filter: str | None = None,
+        is_active_filter: bool | None = None,
+    ) -> Sequence[User]:
+        # stmt = select(User).order_by(User.created_at.desc())
+        # if role_filter:
+        #     stmt = stmt.where(User.role == role_filter)
+        # if is_active_filter is not None:
+        #     stmt = stmt.where(User.is_active == is_active_filter)
+        result = await self.db.execute(
+            self.get_users_stmt(
+                role_filter=role_filter, is_active_filter=is_active_filter
+            )
+        )
         return result.scalars().all()
 
     async def get_user_detail(self, user_id: UUID) -> dict | None:
@@ -182,10 +218,7 @@ class AdminRepository(BaseRepository):
         total_bookings = await self.db.scalar(
             select(func.count())
             .select_from(Booking)
-            .where(
-                (Booking.seeker_id == user_id) | (
-                    Booking.provider_id == user_id)
-            )
+            .where((Booking.seeker_id == user_id) | (Booking.provider_id == user_id))
         )
 
         profile = None
@@ -216,18 +249,18 @@ class AdminRepository(BaseRepository):
         user_counts_result = await self.db.execute(
             select(
                 func.count().label("total_users"),
+                func.count(case((User.role == Role.PROVIDER, 1))).label(
+                    "total_providers"
+                ),
+                func.count(case((User.role == Role.SEEKER, 1))).label("total_seekers"),
                 func.count(
-                    case((User.role == Role.PROVIDER, 1))
-                ).label("total_providers"),
-                func.count(
-                    case((User.role == Role.SEEKER, 1))
-                ).label("total_seekers"),
-                func.count(
-                    case((
-                        (User.role == Role.PROVIDER) &
-                        (User.last_active_at >= now - timedelta(days=30)),
-                        1
-                    ))
+                    case(
+                        (
+                            (User.role == Role.PROVIDER)
+                            & (User.last_active_at >= now - timedelta(days=30)),
+                            1,
+                        )
+                    )
                 ).label("active_providers_month"),
             ).select_from(User)
         )
@@ -236,8 +269,9 @@ class AdminRepository(BaseRepository):
         # total_users = await self.db.scalar(select(func.count()).select_from(User))
         total_bookings = await self.db.scalar(select(func.count()).select_from(Booking))
         avg_rating = await self.db.scalar(
-            select(func.avg(ProviderProfile.average_rating))
-            .where(ProviderProfile.average_rating.is_not(None))
+            select(func.avg(ProviderProfile.average_rating)).where(
+                ProviderProfile.average_rating.is_not(None)
+            )
         )
         # seeker_count = await self.db.scalar(
         #     select(func.count()).select_from(
@@ -257,10 +291,10 @@ class AdminRepository(BaseRepository):
         # Bookings per week for last 8 weeks
         # DATE_TRUNC groups timestamps into week buckets
         from sqlalchemy import text
+
         weekly_result = await self.db.execute(
             select(
-                func.date_trunc("week", Booking.created_at).label(
-                    "week_start"),
+                func.date_trunc("week", Booking.created_at).label("week_start"),
                 func.count().label("count"),
             )
             .where(Booking.created_at >= now - timedelta(weeks=8))
@@ -268,20 +302,21 @@ class AdminRepository(BaseRepository):
             .order_by(text("week_start"))
         )
         bookings_per_week = [
-            {"week_start": r.week_start, "count": r.count}
-            for r in weekly_result.all()
+            {"week_start": r.week_start, "count": r.count} for r in weekly_result.all()
         ]
 
         seeker_count = (user_counts or {}).get("total_seekers") or 0
         provider_count = (user_counts or {}).get("total_providers") or 0
-        ratio = round(seeker_count / provider_count,
-                      2) if provider_count > 0 else None
+        ratio = round(seeker_count / provider_count, 2) if provider_count > 0 else None
 
         return {
             "total_users": (user_counts or {}).get("total_users") or 0,
             "total_bookings": total_bookings or 0,
-            "average_provider_rating": round(float(avg_rating), 2) if avg_rating else None,
-            "active_providers_count": (user_counts or {}).get("active_providers_month") or 0,
+            "average_provider_rating": (
+                round(float(avg_rating), 2) if avg_rating else None
+            ),
+            "active_providers_count": (user_counts or {}).get("active_providers_month")
+            or 0,
             "seeker_count": seeker_count,
             "provider_count": provider_count,
             "seeker_to_provider_ratio": ratio,

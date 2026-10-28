@@ -1,11 +1,11 @@
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
 from app.api.dependencies import get_current_admin_or_super_admin
 from app.models.user_model import User, Role
+from app.models.user_report_model import ReportStatus
 from app.schemas.admin_schema import (
     AdminDashboardResponse,
     VerificationListItem,
@@ -18,9 +18,8 @@ from app.schemas.admin_schema import (
     AdminUserDetail,
     AdminAnalyticsResponse,
 )
+from app.schemas.pagination_schema import PageResponse
 from app.services.admin_service import AdminService
-from app.core.exceptions import DomainValidationError
-from app.core.i18n import t
 
 router = APIRouter(prefix="/admin", tags=["Admin Management"])
 
@@ -36,17 +35,18 @@ async def admin_dashboard(
 
 
 # ── Verifications ──────────────────────────────────────────────────────────────
-
-
-# TODO: add pagination
-@router.get("/pendingVerifications", response_model=list[VerificationListItem])
+@router.get("/pendingVerifications", response_model=PageResponse[VerificationListItem])
 async def list_pending_verifications(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
     """List all providers with PENDING verification status, oldest first."""
-    return await AdminService.get_pending_verifications(db=db, lang=lang)
+    return await AdminService.get_pending_verifications(
+        db=db, lang=lang, page=page, page_size=page_size
+    )
 
 
 @router.patch(
@@ -75,20 +75,20 @@ async def handle_verification(
 
 
 # ── Reports ────────────────────────────────────────────────────────────────────
-
-# TODO: add pagination
-
-
-@router.get("/reports", response_model=list[ReportListItem])
+@router.get("/reports", response_model=PageResponse[ReportListItem])
 async def list_reports(
-    status: str | None = Query(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
+    status: ReportStatus | None = Query(
         None, description="Filter: pending, reviewed, action_taken"
     ),
     _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     # lang: str = Depends(get_lang),
 ):
-    return await AdminService.get_reports(db=db, status_filter=status)
+    return await AdminService.get_reports(
+        db=db, status_filter=status, page=page, page_size=page_size
+    )
 
 
 @router.patch("/reports/{report_id}", response_model=ReportActionResponse)
@@ -117,15 +117,21 @@ async def handle_report(
 
 
 # TODO: apply pagination
-@router.get("/users", response_model=list[AdminUserListItem])
+@router.get("/users", response_model=PageResponse[AdminUserListItem])
 async def list_users(
+    page: int = Query(default=1, ge=1),
+    page_size: int = Query(default=20, ge=1, le=100),
     role: Role | None = Query(None, description="Filter: seeker, provider, admin"),
     is_active: bool | None = Query(None, description="Filter by active status"),
     _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
 ):
     return await AdminService.get_users(
-        db=db, role_filter=role, is_active_filter=is_active
+        db=db,
+        role_filter=role,
+        is_active_filter=is_active,
+        page=page,
+        page_size=page_size,
     )
 
 
