@@ -11,5 +11,4 @@ temp_interactive_push.bat
 .gitignore
 insert_providers.sql
 public/
-.vscode/
 nirbhor_super_admin.md

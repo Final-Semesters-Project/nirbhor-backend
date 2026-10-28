@@ -14,6 +14,7 @@ from app.models.user_model import User
 @dataclass
 class ProviderSearchRow:
     """Mirrors exactly the columns selected in find_providers query."""
+
     user_id: UUID
     name: str
     photo_url: str | None
@@ -38,6 +39,8 @@ class SearchRepository:
         seeker_lng: float,
         search_radius_km: int,
         lang: str,
+        limit: int = 20,
+        offset: int = 0,
     ) -> list[ProviderSearchRow]:
         """
         Core geospatial search with inline ranking score.
@@ -65,15 +68,16 @@ class SearchRepository:
         # ── Days since provider was last active ───────────────────────────────
         # func.extract("epoch", interval) converts a time difference to seconds
         # days_inactive: a float like 2.5 (days)
-        days_inactive = func.extract(
-            "epoch", now - User.last_active_at) / 86400  # convert seconds to days
+        days_inactive = (
+            func.extract("epoch", now - User.last_active_at) / 86400
+        )  # convert seconds to days
 
         # ── Activity bonus/penalty as a CASE expression ───────────────────────
         # case() works like SQL CASE WHEN ... THEN ... END
         # SQLAlchemy evaluates conditions top to bottom, first match wins
         activity_score = case(
-            (days_inactive <= 3,  10.0),
-            (days_inactive <= 15,  5.0),
+            (days_inactive <= 3, 10.0),
+            (days_inactive <= 15, 5.0),
             (days_inactive <= 30, -30.0),
             (days_inactive <= 60, -60.0),
             else_=-60.0,  # fallback (shouldn't reach here due to WHERE filter)
@@ -81,7 +85,7 @@ class SearchRepository:
 
         # ── Verification bonus ────────────────────────────────────────────────
         verification_score = case(
-            (ProviderProfile.verification_level == VerificationLevel.TRUSTED,  5.0),
+            (ProviderProfile.verification_level == VerificationLevel.TRUSTED, 5.0),
             (ProviderProfile.verification_level == VerificationLevel.VERIFIED, 3.0),
             else_=0.0,
         )
@@ -91,8 +95,7 @@ class SearchRepository:
         # object so ST_Distance returns meters (not degrees).
         # ST_Distance with geography=True returns meters
         distance_m = ST_Distance(
-            ProviderProfile.base_location.cast(Geography),
-            seeker_point.cast(Geography)
+            ProviderProfile.base_location.cast(Geography), seeker_point.cast(Geography)
         )
         distance_km = distance_m / 1000.0
 
@@ -102,6 +105,7 @@ class SearchRepository:
         # recent completions. correlate(ProviderProfile) tells SQLAlchemy this
         # subquery links to the outer query's ProviderProfile rows.
         from app.models.booking_model import Booking, BookingStatus
+
         recent_bookings_sq = (
             select(func.count())
             .where(Booking.provider_id == ProviderProfile.user_id)
@@ -126,8 +130,9 @@ class SearchRepository:
             + (recent_bookings_sq * 0.5)
         )
 
-        name_col = func.coalesce(
-            User.name_bn, User.name_en) if lang == "bn" else User.name_en
+        name_col = (
+            func.coalesce(User.name_bn, User.name_en) if lang == "bn" else User.name_en
+        )
 
         stmt = (
             select(
@@ -144,7 +149,10 @@ class SearchRepository:
                 ranking_score.label("score"),
             )
             .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            .join(ProviderSkillLink, ProviderProfile.user_id == ProviderSkillLink.provider_id)
+            .join(
+                ProviderSkillLink,
+                ProviderProfile.user_id == ProviderSkillLink.provider_id,
+            )
             # ── Filters ───────────────────────────────────────────────────────
             .where(ProviderSkillLink.skill_id == skill_id)
             .where(ProviderProfile.is_available == True)
@@ -168,9 +176,7 @@ class SearchRepository:
                 )
             )
             # exclude 60+ day inactive providers entirely
-            .where(
-                User.last_active_at >= now - timedelta(days=60)
-            )
+            .where(User.last_active_at >= now - timedelta(days=60))
             # ── distinct(User.id) ─────────────────────────────────────────────
             # A provider can have multiple skills. Without distinct, a provider
             # with 3 skills in the same category would appear 3 times in results.
@@ -184,23 +190,16 @@ class SearchRepository:
         result = await self.db.execute(stmt)
         # return [dict(row._mapping) for row in result.all()]
         # return result.all()
-        return [
-            ProviderSearchRow(**dict(row._mapping))
-            for row in result.all()
-        ]
+        return [ProviderSearchRow(**dict(row._mapping)) for row in result.all()]
 
-    async def get_skill_name(
-        self, skill_id: int, lang: str
-    ) -> str:
+    async def get_skill_name(self, skill_id: int, lang: str) -> str:
         """
         For the given skill_id, fetch its name once and return it for all
         providers. A single skill search means all providers share the same
         skill name — no need to query per provider.
         """
         name_col = Skill.name_bn if lang == "bn" else Skill.name_en
-        result = await self.db.execute(
-            select(name_col).where(Skill.id == skill_id)
-        )
+        result = await self.db.execute(select(name_col).where(Skill.id == skill_id))
         skill_name = result.scalar_one_or_none() or ""
         # Every provider in results has this skill
         # return {pid: [skill_name] for pid in provider_ids}

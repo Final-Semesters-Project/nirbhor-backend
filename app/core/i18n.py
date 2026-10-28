@@ -217,7 +217,7 @@ message = lang_dict.get(key, MESSAGES["en"].get(key, key))
 """
 
 
-# TODO: Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
+# Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
 T = TypeVar("T", bound=BaseModel)
 
 
