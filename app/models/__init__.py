@@ -12,3 +12,4 @@ from .user_report_model import UserReport
 from .app_version_model import AppVersion
 from .review_model import Review
 from .admin_audit_log_model import AdminAuditLog
+from .seeker_profile_model import SeekerProfile
