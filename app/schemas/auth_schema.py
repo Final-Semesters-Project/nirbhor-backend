@@ -5,21 +5,23 @@ from loguru import logger
 from pydantic import BaseModel, ConfigDict, field_validator, Field, ValidationInfo
 import re
 from uuid import UUID
-from app.core.schema_validators import validate_phone, validate_password, validate_radius, validate_name
+from app.core.schema_validators import (
+    validate_phone,
+    validate_password,
+    validate_radius,
+    validate_name,
+)
 from app.core.i18n import MESSAGES
 from enum import Enum
+
 
 class RegistrationBaseSchema(BaseModel):
     name_en: str
     name_bn: str
     phone: str = Field(
-        ...,
-        description="Phone number must start with 01[3-9] (BD only)"
+        ..., description="Phone number must start with 01[3-9] (BD only)"
     )
-    password: str = Field(
-        ...,
-        description="Password must be at least 8 characters"
-    )
+    password: str = Field(..., description="Password must be at least 8 characters")
     preferred_lang: str = Field(..., description="en or bn")
 
     @field_validator("phone", mode="after")
@@ -44,16 +46,19 @@ class RegistrationBaseSchema(BaseModel):
 
 
 class SeekerRegisterSchema(RegistrationBaseSchema):
-    pass
+    home_latitude: float = Field(
+        ..., description="Seeker home latitude"
+    )  # seeker sends coordinates
+    home_longitude: float = Field(..., description="Seeker home longitude")
+    home_address: str = Field(..., description="Seeker home address in text")
 
 
 class ProviderRegisterSchema(RegistrationBaseSchema):
-    skill_ids: list[int]          # list of skill IDs from the skills table
-    latitude: float               # seeker sends coordinates
+    skill_ids: list[int]  # list of skill IDs from the skills table
+    latitude: float  # seeker sends coordinates
     longitude: float
     working_radius_km: int = Field(
-        ...,
-        description="Working radius must be between 1 and 5 km"
+        ..., description="Working radius must be between 1 and 5 km"
     )
     has_smartphone: bool
     # photo_url: str | None = None
@@ -72,11 +77,11 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
 class AuthResponseSchema(BaseModel):
     access_token: str = Field(
         ...,
-        description="Read from response body. Send in Authorization header: Bearer <token>"
+        description="Read from response body. Send in Authorization header: Bearer <token>",
     )
     refresh_token: str = Field(
         ...,
-        description="Flutter reads from response body. Web ignores this from response body because its in HttpOnly cookie. Send in request body: refresh_token=<token>"
+        description="Flutter reads from response body. Web ignores this from response body because its in HttpOnly cookie. Send in request body: refresh_token=<token>",
     )
     token_type: str = "bearer"
     role: str
@@ -87,20 +92,20 @@ class AuthResponseSchema(BaseModel):
 
 class RefreshTokenSchema(BaseModel):
     refresh_token: str = Field(
-        ...,
-        description="Flutter: send refresh token in request body"
+        ..., description="Flutter: send refresh token in request body"
     )
 
 
 class LogoutSchema(BaseModel):
     refresh_token: str
-    fcm_token: str | None = None   # optional: also clear this device's FCM token
+    fcm_token: str | None = None  # optional: also clear this device's FCM token
 
 
 class DeviceType(str, Enum):
     ANDROID = "android"
     IOS = "ios"
     WEB = "web"
+
 
 class FCMTokenRequest(BaseModel):
     token: str

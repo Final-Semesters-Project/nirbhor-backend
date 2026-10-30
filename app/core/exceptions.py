@@ -47,6 +47,9 @@ VALIDATOR_MSG_MAP = {
     "work schedule is required when hired is true.": "work_schedule_required",
     "work schedule must be a future time.": "work_schedule_must_be_future",
     "rating must be between 1 and 5.": "not_valid_rating",
+    "Latitude must be between -90 and 90.": "invalid_latitude",
+    "Longitude must be between -180 and 180.": "invalid_longitude",
+    "Home address is required.": "address_required",
 }
 
 
