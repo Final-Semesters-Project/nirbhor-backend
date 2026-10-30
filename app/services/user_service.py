@@ -3,35 +3,46 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.i18n import t
 from app.models.user_model import Role, User
 from app.repositories.provider_repository import ProviderRepository
-from app.schemas.user_schema import ProviderMeSchema, SeekerMeSchema
+from app.repositories.seeker_repository import SeekerRepository
+from app.schemas.user_schema import AdminMeSchema, ProviderMeSchema, SeekerMeSchema
 
 
 class UserService:
 
     @staticmethod
     async def get_me(
-        current_user: User,
-        db: AsyncSession,
-        lang: str
-    ) -> SeekerMeSchema | ProviderMeSchema:
+        current_user: User, db: AsyncSession, lang: str
+    ) -> SeekerMeSchema | ProviderMeSchema | AdminMeSchema:
         # Dynamically select the localized name variant
         localized_name = current_user.name_bn if lang == "bn" else current_user.name_en
 
         if current_user.role == Role.SEEKER:
+            seeker_repo = SeekerRepository(db)
+
+            profile = await seeker_repo.seeker_profile_data_for_get_me(current_user.id)
+
+            if profile is None:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=t("user_not_found", lang),
+                )
             return SeekerMeSchema(
                 user_id=current_user.id,
                 role=current_user.role,
                 phone=current_user.phone_en,
                 name=localized_name,
                 is_active=current_user.is_active,
-                created_at=current_user.created_at
+                home_address=profile.home_address,
+                created_at=current_user.created_at,
             )
 
         elif current_user.role == Role.PROVIDER:
             # fetch additional provider data from provider profile
             provider_repo = ProviderRepository(db)
 
-            profile = await provider_repo.provider_profile_data_for_get_me(current_user.id)
+            profile = await provider_repo.provider_profile_data_for_get_me(
+                current_user.id
+            )
 
             if profile is None:
                 raise HTTPException(
@@ -40,7 +51,11 @@ class UserService:
                 )
 
             # Dynamically select the localized AI summary variant
-            localized_summary = profile.ai_review_summary_bn if lang == "bn" else profile.ai_review_summary_en
+            localized_summary = (
+                profile.ai_review_summary_bn
+                if lang == "bn"
+                else profile.ai_review_summary_en
+            )
 
             return ProviderMeSchema(
                 user_id=current_user.id,
@@ -60,15 +75,15 @@ class UserService:
                 warning_status=profile.warning_status,
                 ai_review_summary=localized_summary,
                 created_at=current_user.created_at,
-                verification_rejection_reason=profile.verification_rejection_reason
+                verification_rejection_reason=profile.verification_rejection_reason,
             )
 
-         # admin
-        return SeekerMeSchema(
+        # admin
+        return AdminMeSchema(
             user_id=current_user.id,
             role=current_user.role,
             phone=current_user.phone_en,
             name=localized_name,
             is_active=current_user.is_active,
-            created_at=current_user.created_at
+            created_at=current_user.created_at,
         )

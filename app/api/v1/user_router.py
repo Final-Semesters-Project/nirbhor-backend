@@ -4,7 +4,7 @@ from app.api.dependencies import get_current_user
 from app.core.i18n import get_lang, t
 from app.db.session import get_db_session
 from app.models.user_model import User
-from app.schemas.user_schema import SeekerMeSchema, ProviderMeSchema
+from app.schemas.user_schema import AdminMeSchema, SeekerMeSchema, ProviderMeSchema
 from app.services.user_service import UserService
 from loguru import logger
 
@@ -14,12 +14,12 @@ router = APIRouter(prefix="/users", tags=["Users"])
 @router.get(
     "/me",
     summary="Get current user profile",
-    response_model=SeekerMeSchema | ProviderMeSchema,
+    response_model=SeekerMeSchema | ProviderMeSchema | AdminMeSchema,
     status_code=status.HTTP_200_OK,
 )
 async def get_me(
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
-) -> SeekerMeSchema | ProviderMeSchema:
+) -> SeekerMeSchema | ProviderMeSchema | AdminMeSchema:
     return await UserService.get_me(current_user, db, lang)
