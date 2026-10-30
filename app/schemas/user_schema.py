@@ -1,3 +1,6 @@
+from typing import Literal
+
+from click.utils import R
 from pydantic import BaseModel, ConfigDict, Field
 import uuid
 from app.models.provider_profile_model import VerificationLevel, VerificationStatus
@@ -8,6 +11,17 @@ from datetime import datetime
 class SeekerMeSchema(BaseModel):
     user_id: uuid.UUID
     role: Role = Role.SEEKER
+    phone: str
+    name: str
+    is_active: bool
+    home_address: str
+    created_at: datetime
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminMeSchema(BaseModel):
+    user_id: uuid.UUID
+    role: Literal[Role.ADMIN, Role.SUPER_ADMIN]
     phone: str
     name: str
     is_active: bool
@@ -30,7 +44,8 @@ class ProviderMeSchema(BaseModel):
         description="Verification status of the provider. (pending, approved, rejected). Disable Nid upload if approved. Let provider upload nid if rejected/pending",
     )
     verification_rejection_reason: str | None = Field(
-        ..., description="Rejection reason of the provider if rejected. Show in the profile section if rejected"
+        ...,
+        description="Rejection reason of the provider if rejected. Show in the profile section if rejected",
     )
     # base_location: str, point?
 

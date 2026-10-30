@@ -28,3 +28,6 @@ class SeekerRepository(BaseRepository[SeekerProfile]):
         self.db.add(profile)
         await self.db.flush()
         return profile
+
+    async def seeker_profile_data_for_get_me(self, user_id: UUID):
+        return await self.db.get(SeekerProfile, user_id)
