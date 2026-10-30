@@ -12,8 +12,9 @@ class SkillInfo(BaseModel):
 
 class ProviderDashboardSchema(BaseModel):
     user_id: UUID
-    name: str = Field(...,
-                      description="EN/BN Name of the provider based on the language")
+    name: str = Field(
+        ..., description="EN/BN Name of the provider based on the language"
+    )
     photo_url: str | None = Field(
         ...,
         description="Photo URL of the provider. None if there is no photo yet",
@@ -23,7 +24,9 @@ class ProviderDashboardSchema(BaseModel):
         description="For I am available",
     )
     verification_level: VerificationLevel = Field(
-        ..., description="Verification level of the provider. (basic, verified, trusted)")
+        ...,
+        description="Verification level of the provider. (basic, verified, trusted)",
+    )
     average_rating: float | None = Field(
         ...,
         description="Average rating of the provider. None if there is no rating yet",
@@ -53,9 +56,14 @@ class ProviderProfileUpdateSchema(BaseModel):
     nid_back_public_id: str | None = None
 
     latitude: float | None = Field(
-        None, description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
+        None,
+        description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
+    )
     longitude: float | None = Field(
-        None, description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated")
+        None,
+        description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
+    )
+    # base_address: AddressText | None = None
     working_radius_km: int | None = None
     has_smartphone: bool | None = None
     is_available: bool | None = None
@@ -74,7 +82,7 @@ class AddNewSkillSchema(BaseModel):
 
 class PublicSkill(BaseModel):
     id: int
-    name: str   # localized
+    name: str  # localized
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -85,15 +93,16 @@ class PublicProviderProfile(BaseModel):
     Phone is intentionally excluded (revealed only after booking initiation).
     NID urls excluded (private documents).
     """
+
     user_id: UUID
-    name: str                           # localized
+    name: str  # localized
     photo_url: str | None
     verification_level: VerificationLevel
     average_rating: float | None
     working_radius_km: int
     has_smartphone: bool
     is_available: bool
-    ai_review_summary: str | None       # localized
+    ai_review_summary: str | None  # localized
     skills: list[PublicSkill]
     last_active_at: datetime | None
 

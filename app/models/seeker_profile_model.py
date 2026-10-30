@@ -26,8 +26,10 @@ class SeekerProfile(TimestampMixin, Base):
 
     # PostGIS point — stores (longitude, latitude)
     home_location: Mapped[object] = mapped_column(
-        Geometry(geometry_type="POINT", srid=4326, spatial_index=True),
+        Geometry(
+            geometry_type="POINT", srid=4326, spatial_index=False
+        ),  # Make it false after migration
         nullable=False,
     )
 
-    home_address: Mapped[str] = mapped_column(String, nullable=False)
+    home_address: Mapped[str] = mapped_column(String(255), nullable=False)
