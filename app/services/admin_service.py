@@ -341,18 +341,15 @@ class AdminService:
 
         def transform(row):
             # Single model query → row IS the User object directly, not a tuple
-            # FIXME: Why did I have to use row[0] here?
-            user = row[0]
             return AdminUserListItem(
-                user_id=user.id,
-                name_en=user.name_en,
-                name_bn=user.name_bn,
-                phone=user.phone_en,
-                # role=user.role,
-                role=user.role.value,
-                is_active=user.is_active,
-                last_active_at=user.last_active_at,
-                created_at=user.created_at,
+                user_id=row.id,
+                name_en=row.name_en,
+                name_bn=row.name_bn,
+                phone=row.phone_en,
+                role=row.role.value,
+                is_active=row.is_active,
+                last_active_at=row.last_active_at,
+                created_at=row.created_at,
             )
 
         # These are for non-paginated results

@@ -95,8 +95,14 @@ MESSAGES = {
         "skill_ids_required": "Minimum of 1 skill is required.",
         "invalid_booking_cost": "Cost must be greater than 0tk.",
         "super_admin_only": "Super admin access required.",
+        "invalid_latitude": "Latitude must be between -90 and 90.",
+        "invalid_longitude": "Longitude must be between -180 and 180.",
+        "address_required": "Home address is required.",
     },
     "bn": {
+        "address_required": "বাড়ির ঠিকানা অবশ্যই হতে হবে।",
+        "invalid_latitude": "অক্ষাংশ(latitude) অবশ্যই -৯০ থেকে ৯০ পর্যন্ত হতে হবে।",
+        "invalid_longitude": "দ্রাঘিমাংশ(longitude) অবশ্যই -১৮০ থেকে ১৮০ পর্যন্ত হতে হবে।",
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
         "phone_number_exists": "এই ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে।",
         "invalid_phone": "ভুল বাংলাদেশী ফোন নম্বর। অবশ্যই ০১ দিয়ে শুরু হওয়া ১১ ডিজিটের হতে হবে।",
@@ -217,7 +223,7 @@ message = lang_dict.get(key, MESSAGES["en"].get(key, key))
 """
 
 
-# TODO: Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
+# Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
 T = TypeVar("T", bound=BaseModel)
 
 

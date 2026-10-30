@@ -24,7 +24,8 @@ class User(UUIDMixin, TimestampMixin, Base):
     name_bn: Mapped[str] = mapped_column(String, nullable=False)
 
     phone_en: Mapped[str] = mapped_column(
-        String, nullable=False, unique=True, index=True)  # Login and Calls
+        String, nullable=False, unique=True, index=True
+    )  # Login and Calls
 
     password_hash: Mapped[str] = mapped_column(String(255), nullable=False)
 
@@ -34,7 +35,7 @@ class User(UUIDMixin, TimestampMixin, Base):
             name="role",
             native_enum=False,  # to auto generate enum in alembic versions
             # values_callable is used to store the string values eg: "admin" instead of the Enum ADMIN in DB
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
         nullable=False,
         default=Role.SEEKER,
@@ -43,9 +44,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     )
 
     is_active: Mapped[bool] = mapped_column(
-        Boolean,
-        nullable=False,
-        default=True
+        Boolean, nullable=False, default=True
     )  # False = banned by admins
 
     last_active_at: Mapped[datetime | None] = mapped_column(
@@ -56,42 +55,43 @@ class User(UUIDMixin, TimestampMixin, Base):
 
     preferred_lang: Mapped[str] = mapped_column(
         String(2),
-        default="bn",   # default Bangla for your user base
+        default="bn",  # default Bangla for your user base
         nullable=False,
     )
 
     firebase_uid: Mapped[str | None] = mapped_column(
-        String,
-        unique=True,
-        nullable=True,
-        index=True
+        String, unique=True, nullable=True, index=True
     )  # Firebase phone/google auth UID
 
     google_email: Mapped[EmailStr | None] = mapped_column(
-        String,
-        unique=True,
-        nullable=True,
-        index=True
+        String, unique=True, nullable=True, index=True
     )  # Linked Google account email
 
     # 1-1 relationship to provider profile (let us do user.provider_profile)
     provider_profile: Mapped["ProviderProfile | None"] = relationship(  # type: ignore
         back_populates="user",
         uselist=False,  # for 1-to-1
-        cascade="all, delete-orphan"  # delete profile when user is deleted
+        cascade="all, delete-orphan",  # delete profile when user is deleted
+    )
+
+    # 1-1 relationship to seeker profile (let us do user.provider_profile)
+    seeker_profile: Mapped["SeekerProfile | None"] = relationship(  # type: ignore
+        back_populates="user",
+        uselist=False,  # for 1-to-1
+        cascade="all, delete-orphan",  # delete profile when user is deleted
     )
 
     # 1-to-many relationship to fcm token
     fcm_token: Mapped[list["FCMToken"]] = relationship(  # type: ignore
         back_populates="user",
         uselist=True,  # for 1-to-many
-        cascade="all, delete-orphan"  # delete token when user is deleted
+        cascade="all, delete-orphan",  # delete token when user is deleted
     )
 
     bookings_as_seeker: Mapped[list["Booking"]] = relationship(  # type: ignore
         back_populates="seeker",
         foreign_keys="Booking.seeker_id",
-        cascade="all, delete-orphan"
+        cascade="all, delete-orphan",
     )
 
     bookings_as_provider: Mapped[list["Booking"]] = relationship(  # type: ignore
@@ -138,6 +138,4 @@ class User(UUIDMixin, TimestampMixin, Base):
         foreign_keys="Review.reviewee_id",
     )
 
-    __table_args__ = (
-        Index("ix_users_created_at", "created_at", "id"),
-    )
+    __table_args__ = (Index("ix_users_created_at", "created_at", "id"),)

@@ -19,10 +19,11 @@ class BookingFollowupData:
     Typed result for the followup notification query.
     Contains everything needed to send FCM without any additional DB calls.
     """
+
     booking_id: UUID
     seeker_id: UUID
-    fcm_token: str              # seeker's FCM token
-    preferred_lang: str         # seeker's language preference
+    fcm_token: str  # seeker's FCM token
+    preferred_lang: str  # seeker's language preference
     provider_name_en: str
     provider_name_bn: str | None
     attempt: int = 1
@@ -87,10 +88,11 @@ class BookingRepository(BaseRepository[Booking]):
         self, seeker_id: UUID, exclude_booking_id: UUID
     ) -> int:
         """
-        When seeker confirms hiring one provider from notification, 
+        When seeker confirms hiring one provider from notification,
         cancel all other open INITIATED bookings from this seeker(bulk update). Returns count of cancelled rows. This helps prevent spamming notifications after 12 hours.
         """
         from sqlalchemy import update
+
         result = await self.db.execute(
             update(Booking)
             .where(Booking.seeker_id == seeker_id)
@@ -107,7 +109,7 @@ class BookingRepository(BaseRepository[Booking]):
         and provider name in a single query.
 
         Why LEFT JOIN on FCMToken?
-        A seeker might not have registered an FCM token (e.g. web user, 
+        A seeker might not have registered an FCM token (e.g. web user,
         or token registration failed). LEFT JOIN includes them so we can log
         and skip rather than silently losing the booking from results.
 
@@ -139,12 +141,12 @@ class BookingRepository(BaseRepository[Booking]):
             # left join: include bookings where seeker has no FCM token
             .outerjoin(
                 FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) &
-                (FCMToken.token.is_not(None))
+                (FCMToken.user_id == Booking.seeker_id) & (FCMToken.token.is_not(None)),
             )
             .where(Booking.status == BookingStatus.INITIATED)
             .where(Booking.call_unlocked_at >= window_start)
-            .where(Booking.call_unlocked_at <= window_end))
+            .where(Booking.call_unlocked_at <= window_end)
+        )
 
         rows = result.all()
 
@@ -197,7 +199,6 @@ class BookingRepository(BaseRepository[Booking]):
         )
         return list(result.scalars().all())
 
-    # TODO: use this
     def get_provider_incoming_stmt(self, provider_id: UUID):
         """Statement for provider's IN_PROGRESS bookings."""
         return (
@@ -209,7 +210,9 @@ class BookingRepository(BaseRepository[Booking]):
             .order_by(Booking.confirmed_at.desc())
         )
 
-    async def get_provider_incoming_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
+    async def get_provider_incoming_with_seekers(
+        self, provider_id: UUID
+    ) -> list[tuple[Booking, User]]:
         """Bookings with seeker & skill eagerly loaded."""
         from sqlalchemy.orm import aliased
 
@@ -223,7 +226,9 @@ class BookingRepository(BaseRepository[Booking]):
         )
         return list(result.tuples())
 
-    async def get_provider_completed_with_seekers(self, provider_id: UUID) -> list[tuple[Booking, User]]:
+    async def get_provider_completed_with_seekers(
+        self, provider_id: UUID
+    ) -> list[tuple[Booking, User]]:
         """Bookings with seeker & skill eagerly loaded."""
         from sqlalchemy.orm import aliased
 
@@ -237,7 +242,9 @@ class BookingRepository(BaseRepository[Booking]):
         )
         return list(result.tuples())
 
-    async def get_seeker_history_with_providers(self, seeker_id: UUID) -> list[tuple[Booking, User]]:
+    async def get_seeker_history_with_providers(
+        self, seeker_id: UUID
+    ) -> list[tuple[Booking, User]]:
         """Bookings with provider eagerly loaded."""
         result = await self.db.execute(
             self.get_seeker_history_with_providers_stmt(seeker_id)
@@ -302,9 +309,7 @@ class BookingRepository(BaseRepository[Booking]):
 
     async def get_single_booking(self, booking_id: UUID) -> Booking | None:
         """Fetch one booking by ID. No joins — service handles party lookup."""
-        result = await self.db.execute(
-            select(Booking).where(Booking.id == booking_id)
-        )
+        result = await self.db.execute(select(Booking).where(Booking.id == booking_id))
         return result.scalar_one_or_none()
 
     async def get_in_progress_past_work_schedule(self) -> list[BookingFollowupData]:
@@ -327,12 +332,11 @@ class BookingRepository(BaseRepository[Booking]):
                 ProviderUser.name_en.label("provider_name_en"),
                 ProviderUser.name_bn.label("provider_name_bn"),
             )
-            .join(SeekerUser,   Booking.seeker_id == SeekerUser.id)
+            .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
             .join(ProviderUser, Booking.provider_id == ProviderUser.id)
             .outerjoin(
                 FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) &
-                (FCMToken.token.is_not(None))
+                (FCMToken.user_id == Booking.seeker_id) & (FCMToken.token.is_not(None)),
             )
             .where(Booking.status == BookingStatus.IN_PROGRESS)
             .where(Booking.work_schedule < now)
@@ -352,15 +356,16 @@ class BookingRepository(BaseRepository[Booking]):
             for row in rows
         ]
 
-    async def auto_complete_stale_in_progress(self, grace_period_hours: int = 72) -> int:
+    async def auto_complete_stale_in_progress(
+        self, grace_period_hours: int = 72
+    ) -> int:
         """
         Bookings still IN_PROGRESS more than grace_period_hours after work_schedule
         are auto-marked COMPLETED with completed_at = work_schedule.
         This prevents bookings from being stuck forever if the seeker never
         opens the app to manually mark completion.
         """
-        cutoff = datetime.now(timezone.utc) - \
-            timedelta(hours=grace_period_hours)
+        cutoff = datetime.now(timezone.utc) - timedelta(hours=grace_period_hours)
         result = await self.db.execute(
             update(Booking)
             .where(Booking.status == BookingStatus.IN_PROGRESS)

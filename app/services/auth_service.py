@@ -8,9 +8,15 @@ from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.fcm_token import FCMToken
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.seeker_repository import SeekerRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_session_repository import UserSessionRepository
-from app.schemas.auth_schema import AuthResponseSchema, LogoutSchema, ProviderRegisterSchema, SeekerRegisterSchema
+from app.schemas.auth_schema import (
+    AuthResponseSchema,
+    LogoutSchema,
+    ProviderRegisterSchema,
+    SeekerRegisterSchema,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import Security
 from app.models.user_model import Role
@@ -65,7 +71,7 @@ class AuthService:
             secure=True,
             # samesite="lax" breaks cross-origin cookie sending from frontend to backend if deployed in separate platforms. eg: Vercel -> Render
             samesite="none",
-            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60
+            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         )
 
         # return tokens
@@ -90,12 +96,12 @@ class AuthService:
 
         # re-validate with language context so error messages are translated
         data = SeekerRegisterSchema.model_validate(
-            data.model_dump(),
-            context={"lang": lang}
+            data.model_dump(), context={"lang": lang}
         )
 
         # Create an instance of UserRepository
         user_repo = UserRepository(db)
+        seeker_repo = SeekerRepository(db)
 
         # business rule: phone must be unique
         existing = await user_repo.get_by_phone(data.phone)
@@ -112,6 +118,14 @@ class AuthService:
                 role=Role.SEEKER,
                 name_en=data.name_en,
                 name_bn=data.name_bn,
+            )
+
+            # create provider profile
+            await seeker_repo.create_profile(
+                user_id=user.id,
+                latitude=data.home_latitude,
+                longitude=data.home_longitude,
+                home_address=data.home_address,
             )
 
             # create and store tokens
@@ -141,19 +155,11 @@ class AuthService:
             # unwrap the original asyncpg exception to route correctly
             if isinstance(e.orig, ForeignKeyViolationError):
                 logger.warning(f"FK violation in seeker registration: {raw}")
-                raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                raise DomainValidationError(error_message=readable, raw_error=raw)
             if isinstance(e.orig, UniqueViolationError):
-                logger.warning(
-                    f"Unique violation in seeker registration: {raw}")
-                raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
-            logger.error(
-                f"Unhandled IntegrityError in seeker registration: {raw}")
+                logger.warning(f"Unique violation in seeker registration: {raw}")
+                raise DomainIntegrityError(error_message=readable, raw_error=raw)
+            logger.error(f"Unhandled IntegrityError in seeker registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -176,8 +182,7 @@ class AuthService:
 
         # re-validate with language context so error messages are translated
         data = ProviderRegisterSchema.model_validate(
-            data.model_dump(),
-            context={"lang": lang}
+            data.model_dump(), context={"lang": lang}
         )
 
         # Create an instance of UserRepository
@@ -207,15 +212,15 @@ class AuthService:
                 latitude=data.latitude,
                 longitude=data.longitude,
                 working_radius_km=data.working_radius_km,
-                user_id=user.id
+                user_id=user.id,
             )
 
-            if (len(data.skill_ids) == 0):
+            if len(data.skill_ids) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=t("skill_ids_required", lang),
                 )
-            
+
             await provider_repo.add_skills(user.id, data.skill_ids)
 
             # create and store tokens
@@ -255,20 +260,12 @@ class AuthService:
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
                 logger.warning(f"FK violation in provider registration: {raw}")
-                raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                raise DomainValidationError(error_message=readable, raw_error=raw)
             if is_unique:
-                logger.warning(
-                    f"Unique violation in provider registration: {raw}")
-                raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                logger.warning(f"Unique violation in provider registration: {raw}")
+                raise DomainIntegrityError(error_message=readable, raw_error=raw)
 
-            logger.error(
-                f"Unhandled IntegrityError in provider registration: {raw}")
+            logger.error(f"Unhandled IntegrityError in provider registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -302,7 +299,9 @@ class AuthService:
             )
 
         # 2. Verify password
-        is_valid_password = await Security.verify_password_async(password, user.password_hash)
+        is_valid_password = await Security.verify_password_async(
+            password, user.password_hash
+        )
         # if not Security.verify_password(password, user.password_hash):
         if not is_valid_password:
             raise HTTPException(
@@ -332,8 +331,7 @@ class AuthService:
         await db.commit()
         UserCacheService.set(str(result.user_id), user)
 
-        logger.success(
-            f"User logged in: {user.id} | role: {user.role.value}")
+        logger.success(f"User logged in: {user.id} | role: {user.role.value}")
 
         return result
 
@@ -350,11 +348,15 @@ class AuthService:
         from sqlalchemy.dialects.postgresql import insert
 
         # Upsert — avoid duplicates if same token registered twice
-        stmt = insert(FCMToken).values(
-            user_id=user_id,
-            token=token,
-            device_type=device_type,
-        ).on_conflict_do_nothing()
+        stmt = (
+            insert(FCMToken)
+            .values(
+                user_id=user_id,
+                token=token,
+                device_type=device_type,
+            )
+            .on_conflict_do_nothing()
+        )
 
         await db.execute(stmt)
         await db.commit()
@@ -374,8 +376,7 @@ class AuthService:
 
         deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
         if not deleted:
-            logger.warning(
-                f"Logout: refresh token not found for user {user_id}")
+            logger.warning(f"Logout: refresh token not found for user {user_id}")
 
         payload = Security.decode_access_token(access_token)
 
@@ -385,7 +386,8 @@ class AuthService:
             )
             if remaining_seconds > 0:
                 TokenBlockListService.add(
-                    token=access_token, ttl_seconds=remaining_seconds)
+                    token=access_token, ttl_seconds=remaining_seconds
+                )
 
         UserCacheService.invalidate(str(user_id))
 

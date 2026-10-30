@@ -45,9 +45,11 @@ class DomainValidationError(Exception):
 # Mapping from the raw ValueError string → i18n key
 VALIDATOR_MSG_MAP = {
     "work schedule is required when hired is true.": "work_schedule_required",
-    "work schedule must be a future time.":          "work_schedule_must_be_future",
-    "rating must be between 1 and 5.":               "not_valid_rating",
-    # TODO: add more as you write more validators
+    "work schedule must be a future time.": "work_schedule_must_be_future",
+    "rating must be between 1 and 5.": "not_valid_rating",
+    "Latitude must be between -90 and 90.": "invalid_latitude",
+    "Longitude must be between -180 and 180.": "invalid_longitude",
+    "Home address is required.": "address_required",
 }
 
 
@@ -62,6 +64,8 @@ def _translate_validator_msg(pydantic_msg: str, lang: str) -> str:
     if key:
         return t(key, lang)
     return clean
+
+
 # =================================
 # extract error messages from pydantic validation errors(422 Unprocessable Content)
 
@@ -71,8 +75,7 @@ def register_exception_handlers(app):
 
     @app.exception_handler(RequestValidationError)
     async def validation_exception_handler(
-        request: Request,
-        exc: RequestValidationError
+        request: Request, exc: RequestValidationError
     ) -> JSONResponse:
         """
         Normalize Pydantic 422 errors to match our standard error format.
@@ -86,8 +89,7 @@ def register_exception_handlers(app):
         # extract human readable messages from pydantic errors
         messages = []
         for error in errors:
-            field = " → ".join(str(loc)
-                               for loc in error["loc"] if loc != "body")
+            field = " → ".join(str(loc) for loc in error["loc"] if loc != "body")
             msg = error["msg"]
 
             # Translate known validator messages
@@ -107,14 +109,13 @@ def register_exception_handlers(app):
                 "detail": messages[0] if len(messages) == 1 else messages,
                 # single error → string, multiple → list
                 # frontend checks: typeof detail === 'string' vs Array.isArray(detail)
-            }
+            },
         )
 
     # normalize all HTTP exceptions
     @app.exception_handler(StarletteHTTPException)
     async def http_exception_handler(
-        request: Request,
-        exc: StarletteHTTPException
+        request: Request, exc: StarletteHTTPException
     ) -> JSONResponse:
         """Normalize all HTTP exceptions to same format."""
 
@@ -127,15 +128,11 @@ def register_exception_handlers(app):
                 f"HTTP {exc.status_code} on {request.method} {request.url.path}: {exc.detail}"
             )
 
-        return JSONResponse(
-            status_code=exc.status_code,
-            content={"detail": exc.detail}
-        )
+        return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
     @app.exception_handler(DomainIntegrityError)
     async def domain_integrity_error_handler(
-        request: Request,
-        exc: DomainIntegrityError
+        request: Request, exc: DomainIntegrityError
     ) -> JSONResponse:
         """
         409 Conflict for business rule violations.
@@ -147,14 +144,12 @@ def register_exception_handlers(app):
         )
 
         return JSONResponse(
-            status_code=status.HTTP_409_CONFLICT,
-            content={"detail": exc.error_message}
+            status_code=status.HTTP_409_CONFLICT, content={"detail": exc.error_message}
         )
 
     @app.exception_handler(DomainValidationError)
     async def domain_validation_error_handler(
-        request: Request,
-        exc: DomainValidationError
+        request: Request, exc: DomainValidationError
     ) -> JSONResponse:
         logger.warning(
             f"DomainValidationError on {request.method} {request.url.path}: "
@@ -162,7 +157,7 @@ def register_exception_handlers(app):
         )
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"detail": exc.error_message}
+            content={"detail": exc.error_message},
         )
 
     @app.exception_handler(Exception)
@@ -174,7 +169,8 @@ def register_exception_handlers(app):
 
         # 1. Log the absolute truth securely on the machine
         logger.opt(exception=exc).critical(
-            f"Unhandled exception on {request.method} {request.url.path}")
+            f"Unhandled exception on {request.method} {request.url.path}"
+        )
 
         # 2. Sniff out language from header for localization
         accept_lang = request.headers.get("accept-language", "en")
@@ -182,6 +178,5 @@ def register_exception_handlers(app):
 
         # 3. Send back a polished, safe, completely generic JSON payload
         return JSONResponse(
-            status_code=500,
-            content={"detail": t("internal_server_error", lang)}
+            status_code=500, content={"detail": t("internal_server_error", lang)}
         )
