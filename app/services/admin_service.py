@@ -29,6 +29,7 @@ from app.core.i18n import t
 import cloudinary.utils
 
 from app.schemas.pagination_schema import PageResponse
+from app.services.notification_service import NotificationService
 
 
 class AdminService:
@@ -72,8 +73,10 @@ class AdminService:
                 name=user.name_en,
                 phone=user.phone_en,
                 photo_url=profile.photo_url,
-                nid_url_front=AdminService.get_signed_nid_url(profile.nid_url_front),
-                nid_url_back=AdminService.get_signed_nid_url(profile.nid_url_back),
+                nid_url_front=AdminService.get_signed_nid_url(
+                    profile.nid_url_front),
+                nid_url_back=AdminService.get_signed_nid_url(
+                    profile.nid_url_back),
                 verification_level=profile.verification_level.value,
                 verification_status=profile.verification_status.value,
                 submitted_at=profile.updated_at or profile.created_at,
@@ -134,11 +137,12 @@ class AdminService:
                     provider_profile
                 )
 
-                logger.info(f"Admin approved verification for provider {provider_id}")
-                # TODO: send FCM to provider — "Your account is now verified!"
+                logger.info(
+                    f"Admin approved verification for provider {provider_id}")
             else:
                 if not data.rejection_reason:
-                    raise DomainValidationError(t("rejection_reason_required", lang))
+                    raise DomainValidationError(
+                        t("rejection_reason_required", lang))
 
                 updated_provider_profile = await admin_repo.reject_verification(
                     provider_profile=provider_profile, reason=data.rejection_reason
@@ -147,9 +151,32 @@ class AdminService:
                     f"Admin rejected verification for provider {provider_id}: "
                     f"{data.rejection_reason}"
                 )
-                # TODO: send FCM to provider — "Your verification was rejected: {reason}"
 
             await db.commit()
+
+            # Fetch provider's FCM token and language preference
+            from app.models.fcm_token import FCMToken
+            from sqlalchemy import select
+
+            token_result = await db.execute(
+                select(FCMToken.token, User.preferred_lang)
+                .join(User, FCMToken.user_id == User.id)
+                .where(FCMToken.user_id == provider_id)
+                .limit(1)
+            )
+            token_row = token_result.first()
+            if token_row:
+                if data.verification_status == VerificationStatus.APPROVED:
+                    await NotificationService.send_verification_approved(
+                        provider_fcm_token=token_row.token,
+                        preferred_lang=token_row.preferred_lang or "bn",
+                    )
+                else:
+                    await NotificationService.send_verification_rejected(
+                        provider_fcm_token=token_row.token,
+                        preferred_lang=token_row.preferred_lang or "bn",
+                        reason=data.rejection_reason,
+                    )
 
             verification_actions = {
                 VerificationStatus.APPROVED: "approved_verification",
@@ -165,7 +192,7 @@ class AdminService:
                 target_user_id=provider_id,
                 details=(
                     data.rejection_reason
-                    if data.verification_status == "rejected"
+                    if data.verification_status == VerificationStatus.REJECTED
                     else None
                 ),
             )
@@ -197,12 +224,14 @@ class AdminService:
                 logger.warning(
                     f"FK violation in provider verification update by admin: {raw}"
                 )
-                raise DomainValidationError(error_message=readable, raw_error=raw)
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(
                     f"Unique violation in provider verification update by admin: {raw}"
                 )
-                raise DomainIntegrityError(error_message=readable, raw_error=raw)
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
 
             logger.error(
                 f"IntegrityError in provider verification update by admin: {raw}"
@@ -302,7 +331,8 @@ class AdminService:
         elif data.status == ReportStatus.UNDER_INVESTIGATION:
             if report.status != ReportStatus.PENDING:
                 raise DomainValidationError("can_not_set_under_investigation")
-            logger.info(f"Admin marked report {report_id} as under investigation")
+            logger.info(
+                f"Admin marked report {report_id} as under investigation")
 
         await admin_repo.update_report_status(report, data.status)
 
@@ -424,7 +454,8 @@ class AdminService:
             raise DomainValidationError(t("user_not_found", lang))
 
         if user.role == Role.SUPER_ADMIN:
-            raise DomainValidationError(t("admin_only", lang))  # 400 — access denied
+            raise DomainValidationError(
+                t("admin_only", lang))  # 400 — access denied
 
         toggled = await repo.toggle_user_active(user_id)
 
@@ -434,7 +465,8 @@ class AdminService:
         UserCacheService.invalidate(str(user_id))
 
         await db.commit()
-        logger.info(f"Admin toggled user {user_id} is_active → {user.is_active}")
+        logger.info(
+            f"Admin toggled user {user_id} is_active → {user.is_active}")
 
         return {
             "user_id": user_id,
