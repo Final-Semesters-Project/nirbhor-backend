@@ -1,6 +1,13 @@
 from datetime import datetime
 from uuid import UUID
-from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
+from pydantic import (
+    BaseModel,
+    ConfigDict,
+    Field,
+    ValidationInfo,
+    field_validator,
+    model_validator,
+)
 from app.core.schema_validators import validate_radius
 from app.models.provider_profile_model import VerificationLevel
 
@@ -74,6 +81,15 @@ class ProviderProfileUpdateSchema(BaseModel):
         if v is None:
             return None
         return validate_radius(v, info=info)
+
+    @model_validator(mode="after")
+    def location_fields_together(self):
+        group = [self.latitude, self.longitude, self.base_address]
+        if any(v is not None for v in group) and not all(v is not None for v in group):
+            raise ValueError(
+                "latitude, longitude and base_address must be updated together."
+            )
+        return self
 
 
 class AddNewSkillSchema(BaseModel):
