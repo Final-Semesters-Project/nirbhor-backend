@@ -25,3 +25,31 @@ class ProviderSearchResponse(BaseModel):
     warning: str | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderSearchResponsePaginated(BaseModel):
+    items: list[ProviderSearchResult] = []  # ProviderSearchResult
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+    expanded_radius: bool
+    warning: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderSearchNotFoundResponse(BaseModel):
+    items: list = []
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+    expanded_radius: bool
+    warning: str | None
+
+    model_config = ConfigDict(from_attributes=True)

@@ -99,7 +99,7 @@ def register_exception_handlers(app):
             messages.append(f"{field}: {translated}" if field else translated)
             # messages.append(f"{field}: {msg}" if field else msg)
 
-        logger.debug(
+        logger.warning(
             f"Validation error(pydantic 422) on {request.method} {request.url.path}: {messages}"
         )
 
