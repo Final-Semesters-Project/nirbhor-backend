@@ -63,7 +63,7 @@ class ProviderProfileUpdateSchema(BaseModel):
         None,
         description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
     )
-    # base_address: AddressText | None = None
+    base_address: str | None = None
     working_radius_km: int | None = None
     has_smartphone: bool | None = None
     is_available: bool | None = None

@@ -232,6 +232,7 @@ async def seed_load_test_provider(db: AsyncSession) -> None:
             base_location=from_shape(
                 Point(90.3950 + (i * 0.001), 23.7540 + (i * 0.001)), srid=4326
             ),
+            base_address=f"House {i}, Road 10, Dhanmondi, Dhaka",
             location_updated_at=now - timedelta(days=20),
             working_radius_km=5,
             radius_updated_at=now - timedelta(days=20),
