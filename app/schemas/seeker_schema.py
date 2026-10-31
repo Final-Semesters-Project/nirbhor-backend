@@ -1,5 +1,7 @@
 # app/schemas/seeker_schema.py (new)
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class SeekerAddressUpdateSchema(BaseModel):
@@ -13,11 +15,11 @@ class SeekerAddressUpdateSchema(BaseModel):
         ...,
         description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
     )
-    home_address: str
+    home_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)]
 
 
 class SeekerAddressResponse(BaseModel):
     # all None when the seeker has not saved an address yet
     latitude: float | None = None
     longitude: float | None = None
-    home_address: str | None = None
+    home_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)] | None = None
