@@ -31,3 +31,22 @@ class SeekerRepository(BaseRepository[SeekerProfile]):
 
     async def seeker_profile_data_for_get_me(self, user_id: UUID):
         return await self.db.get(SeekerProfile, user_id)
+
+    async def update_address(
+        self, user_id: UUID, latitude: float, longitude: float, address: str
+    ) -> SeekerProfile:
+        """Update if the row exists, create it otherwise (legacy seekers)."""
+        profile = await self.seeker_profile_data_for_get_me(user_id)
+
+        if profile is None:
+            return await self.create_profile(
+                user_id=user_id,
+                latitude=latitude,
+                longitude=longitude,
+                home_address=address,
+            )
+
+        profile.home_location = ST_SetSRID(ST_MakePoint(longitude, latitude), 4326)
+        profile.home_address = address
+        await self.db.flush()
+        return profile
