@@ -41,7 +41,7 @@ class SearchRepository:
         lang: str,
         limit: int = 20,
         offset: int = 0,
-    ) -> list[ProviderSearchRow]:
+    ) -> tuple[list[ProviderSearchRow], int]:
         """
         Core geospatial search with inline ranking score.
 
@@ -187,10 +187,41 @@ class SearchRepository:
             .order_by(User.id, ranking_score.desc())
         )
 
-        result = await self.db.execute(stmt)
+        # Count total before pagination — same filters, just count
+        count_stmt = (
+            select(func.count(func.distinct(User.id)))
+            .join(ProviderProfile, User.id == ProviderProfile.user_id)
+            .join(ProviderSkillLink, ProviderProfile.user_id == ProviderSkillLink.provider_id)
+            .where(ProviderSkillLink.skill_id == skill_id)
+            .where(ProviderProfile.is_available == True)
+            .where(User.is_active == True)
+            .where(ST_DWithin(
+                ProviderProfile.base_location.cast(Geography),
+                seeker_point.cast(Geography),
+                radius_m,
+            ))
+            .where(ST_DWithin(
+                ProviderProfile.base_location.cast(Geography),
+                seeker_point.cast(Geography),
+                ProviderProfile.working_radius_km * 1000,
+            ))
+            .where(User.last_active_at >= now - timedelta(days=60))
+        )
+        total = await self.db.scalar(count_stmt) or 0
+
+        # Add pagination to existing stmt
+        paginated_stmt = stmt.limit(limit).offset(offset)
+
+        # result = await self.db.execute(stmt)
+        result = await self.db.execute(paginated_stmt)
         # return [dict(row._mapping) for row in result.all()]
         # return result.all()
-        return [ProviderSearchRow(**dict(row._mapping)) for row in result.all()]
+        rows = [
+            ProviderSearchRow(**dict(row._mapping))
+            for row in result.all()
+        ]
+        return rows, total
+        # return [ProviderSearchRow(**dict(row._mapping)) for row in result.all()]
 
     async def get_skill_name(self, skill_id: int, lang: str) -> str:
         """

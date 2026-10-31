@@ -6,25 +6,27 @@ from app.core.i18n import get_lang
 from app.api.dependencies import get_current_seeker
 from app.models.user_model import User
 from app.core.i18n import t
-from app.schemas.search_schema import ProviderSearchResponse
+from app.schemas.search_schema import ProviderSearchResponsePaginated
 from app.services.search_service import SearchService
 from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/search", tags=["Search"])
 
 
-# TODO: add pagination
-@router.get("/providers", response_model=ProviderSearchResponse)
+@router.get("/providers", response_model=ProviderSearchResponsePaginated)
 @limiter.limit("30/minute")  # limit to 30 requests per minute
 async def search_providers(
     request: Request,
     skill_id: int = Query(..., description="Skill ID selected from dropdown"),
     seeker_lat: float = Query(..., description="Seeker's current latitude"),
     seeker_lng: float = Query(..., description="Seeker's current longitude"),
-    search_radius_km: int = Query(1, ge=1, le=5, description="Search radius in KM"),
+    search_radius_km: int = Query(
+        1, ge=1, le=5, description="Search radius in KM"),
     current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
+    page: int = 1,
+    page_size: int = 20,
 ):
     """
     Geo-aware provider search with ranking score.
@@ -38,6 +40,8 @@ async def search_providers(
         seeker_lat=seeker_lat,
         seeker_lng=seeker_lng,
         search_radius_km=search_radius_km,
+        page=page,
+        page_size=page_size
     )
 
 
