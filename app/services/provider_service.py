@@ -102,18 +102,41 @@ class ProviderService:
         # Use exclude_unset=True for PATCH-style partial updates
         data_dict = update_data.model_dump(exclude_unset=True)
 
-        # handle location logic and update the data_dict
-        if "latitude" in data_dict and "longitude" in data_dict:
+        # Pop all three up front. Explicit nulls are ignored, so a client
+        # can never clear base_address or bypass the lock by sending null.
+        lat = data_dict.pop("latitude", None)
+        lng = data_dict.pop("longitude", None)
+        address = data_dict.pop("base_address", None)
+
+        if lat is not None or lng is not None or address is not None:
+            # any one of them present means "this is a location change"
+            if lat is None or lng is None or address is None:
+                raise DomainValidationError(t("location_fields_together", lang))
+
             days_difference = (datetime.now(timezone.utc) -
                                provider_instance.location_updated_at).days
-
             if days_difference < 7:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=t("location_update_limit", lang),
                 )
-            data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
+
+            data_dict["base_location"] = f"POINT({lng} {lat})"
+            data_dict["base_address"] = address
             data_dict["location_updated_at"] = func.now()
+
+        # handle location logic and update the data_dict
+        # if "latitude" in data_dict and "longitude" in data_dict:
+        #     days_difference = (datetime.now(timezone.utc) -
+        #                        provider_instance.location_updated_at).days
+
+        #     if days_difference < 7:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_400_BAD_REQUEST,
+        #             detail=t("location_update_limit", lang),
+        #         )
+        #     data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
+        #     data_dict["location_updated_at"] = func.now()
 
         if "working_radius_km" in data_dict:
             days_difference = (datetime.now(timezone.utc) -

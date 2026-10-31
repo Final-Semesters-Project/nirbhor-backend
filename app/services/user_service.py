@@ -65,6 +65,7 @@ class UserService:
                 is_active=current_user.is_active,
                 verification_level=profile.verification_level,
                 verification_status=profile.verification_status,
+                base_address=profile.base_address or "",
                 working_radius_km=profile.working_radius_km,
                 has_smartphone=profile.has_smartphone,
                 is_available=profile.is_available,

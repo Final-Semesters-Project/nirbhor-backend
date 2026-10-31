@@ -1,4 +1,6 @@
-from pydantic import BaseModel, model_validator
+from typing import Annotated
+
+from pydantic import BaseModel, StringConstraints, model_validator
 from datetime import datetime
 from enum import Enum
 from loguru import logger
@@ -50,7 +52,7 @@ class SeekerRegisterSchema(RegistrationBaseSchema):
         ..., description="Seeker home latitude"
     )  # seeker sends coordinates
     home_longitude: float = Field(..., description="Seeker home longitude")
-    home_address: str = Field(..., description="Seeker home address in text")
+    home_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)] = Field(..., description="Seeker home address in text")
 
     @model_validator(mode="after")
     def address_all_or_none(self):
@@ -70,13 +72,13 @@ class ProviderRegisterSchema(RegistrationBaseSchema):
         ..., description="Working radius must be between 1 and 5 km"
     )
     has_smartphone: bool
-    # base_address: str | None = None
-    # @model_validator(mode="after")
-    # def location_fields_together(self):
-    #     group = [self.latitude, self.longitude, self.base_address]
-    #     if any(v is not None for v in group) and not all(v is not None for v in group):
-    #         raise ValueError("latitude, longitude and base_address must be updated together.")
-    #     return self
+    base_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)] | None = None
+    @model_validator(mode="after")
+    def location_fields_together(self):
+        group = [self.latitude, self.longitude, self.base_address]
+        if any(v is not None for v in group) and not all(v is not None for v in group):
+            raise ValueError("latitude, longitude and base_address must be updated together.")
+        return self
 
     @field_validator("working_radius_km", mode="after")
     @classmethod

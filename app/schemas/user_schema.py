@@ -31,7 +31,7 @@ class AdminMeSchema(BaseModel):
 
 class ProviderMeSchema(BaseModel):
     user_id: uuid.UUID
-    role: Role = Role.SEEKER
+    role: Role = Role.PROVIDER
     phone: str
     name: str
     is_active: bool
@@ -47,7 +47,7 @@ class ProviderMeSchema(BaseModel):
         ...,
         description="Rejection reason of the provider if rejected. Show in the profile section if rejected",
     )
-    # base_location: str, point?
+    base_address: str
 
     working_radius_km: int
     has_smartphone: bool

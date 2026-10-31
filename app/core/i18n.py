@@ -98,8 +98,10 @@ MESSAGES = {
         "invalid_latitude": "Latitude must be between -90 and 90.",
         "invalid_longitude": "Longitude must be between -180 and 180.",
         "address_required": "Home address is required.",
+        "location_fields_together": "latitude, longitude and base_address must be updated together.",
     },
     "bn": {
+        "location_fields_together": "অক্ষাংশ(latitude), দ্রাঘিমাংশ(longitude) এবং বাড়ির ঠিকানা একসাথে আপডেট করতে হবে।",
         "address_required": "বাড়ির ঠিকানা অবশ্যই হতে হবে।",
         "invalid_latitude": "অক্ষাংশ(latitude) অবশ্যই -৯০ থেকে ৯০ পর্যন্ত হতে হবে।",
         "invalid_longitude": "দ্রাঘিমাংশ(longitude) অবশ্যই -১৮০ থেকে ১৮০ পর্যন্ত হতে হবে।",
