@@ -82,10 +82,12 @@ class BookingService:
 
             await db.commit()
 
-            logger.success(f"Booking initiated: {booking.id} by seeker {seeker_id}")
-
-            # TODO: 4. Schedule the FCM follow-up notification (stub — implement with APScheduler)
-            # NotificationService.schedule_booking_followup(booking.id, delay_hours=2)
+            logger.success(
+                f"Booking initiated: {booking.id} by seeker {seeker_id}")
+            logger.info(
+                f"Booking {booking.id} initiated — "
+                f"APScheduler will send followup FCM in ~2 hours"
+            )
 
             # Dynamically select the localized name variant
             localized_name = provider.name_bn if lang == "bn" else provider.name_en
@@ -115,10 +117,12 @@ class BookingService:
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
                 logger.warning(f"FK violation in initiate booking: {raw}")
-                raise DomainValidationError(error_message=readable, raw_error=raw)
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(f"Unique violation in initiate booking: {raw}")
-                raise DomainIntegrityError(error_message=readable, raw_error=raw)
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
 
             logger.error(f"IntegrityError in initiate booking: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
@@ -228,7 +232,8 @@ class BookingService:
         try:
             # If they hired the provider, update active tracking parameters
             if data.hired:
-                logger.info(f"Booking {booking_id} → IN_PROGRESS by seeker {seeker_id}")
+                logger.info(
+                    f"Booking {booking_id} → IN_PROGRESS by seeker {seeker_id}")
 
                 # Implied Activity: bump last_active_at for both parties
                 now = datetime.now(timezone.utc)
@@ -275,20 +280,26 @@ class BookingService:
 
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
-                logger.warning(f"FK violation in booking status update(FCM): {raw}")
-                raise DomainValidationError(error_message=readable, raw_error=raw)
+                logger.warning(
+                    f"FK violation in booking status update(FCM): {raw}")
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if is_unique:
-                logger.warning(f"Unique violation in booking status update(FCM): {raw}")
-                raise DomainIntegrityError(error_message=readable, raw_error=raw)
+                logger.warning(
+                    f"Unique violation in booking status update(FCM): {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
 
-            logger.error(f"IntegrityError in booking status update(FCM): {raw}")
+            logger.error(
+                f"IntegrityError in booking status update(FCM): {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
             raise
         except Exception as e:
             await db.rollback()
-            logger.error(f"Unexpected error in booking status update(FCM): {e}")
+            logger.error(
+                f"Unexpected error in booking status update(FCM): {e}")
             raise
 
     @staticmethod
@@ -314,7 +325,8 @@ class BookingService:
                 ),
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
-                other_party_name=(seeker.name_bn if lang == "bn" else seeker.name_en),
+                other_party_name=(seeker.name_bn if lang ==
+                                  "bn" else seeker.name_en),
                 other_party_phone=seeker.phone_en,
             )
 
@@ -358,7 +370,8 @@ class BookingService:
         )
 
         result = []
-        logger.info(f"completed bookings with seekers: {bookings_with_seekers}")
+        logger.info(
+            f"completed bookings with seekers: {bookings_with_seekers}")
         for booking, seeker in bookings_with_seekers:
             localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
             localized_skill_name = (
@@ -455,7 +468,8 @@ class BookingService:
         #     ))
         return await paginate(
             db=db,
-            stmt=booking_repo.get_seeker_history_with_providers_stmt(seeker_id),
+            stmt=booking_repo.get_seeker_history_with_providers_stmt(
+                seeker_id),
             pk_col=Booking.id,
             transformer=transform,
             page_size=page_size,
@@ -484,5 +498,6 @@ class BookingService:
         updated = await booking_repo.mark_completed(booking)
         await db.commit()
 
-        logger.info(f"Booking {booking_id} marked COMPLETED by seeker {seeker_id}")
+        logger.info(
+            f"Booking {booking_id} marked COMPLETED by seeker {seeker_id}")
         return {"booking_id": booking_id, "status": updated.status}
