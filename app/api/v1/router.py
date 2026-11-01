@@ -2,7 +2,6 @@ from fastapi import APIRouter
 from app.api.v1 import (
     auth_router,
     categories_router,
-    health,
     reviews_router,
     seeker_router,
     skill_router,
@@ -18,7 +17,6 @@ from app.api.v1 import (
 
 api_router = APIRouter()
 
-api_router.include_router(health.router)
 api_router.include_router(auth_router.router)
 api_router.include_router(admin_router.router)
 api_router.include_router(skill_router.router)
