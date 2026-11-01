@@ -2,7 +2,7 @@ from loguru import logger
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1.router import api_router
-from fastapi import FastAPI, status
+from fastapi import FastAPI, Request, status
 from app.core.cloudinary_helpers import init_cloudinary
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -162,7 +162,8 @@ async def root():
 
 @app.get("/health", status_code=status.HTTP_200_OK)
 @app.head("/health",  status_code=status.HTTP_200_OK)
-async def health_check():
+@limiter.limit("3/minute")
+async def health_check(request: Request):
     return {"status": "ok", "service": "nirbhor-backend"}
 
 
