@@ -5,7 +5,7 @@ import enum
 from sqlalchemy import Enum as sqlEnum, DateTime
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import EmailStr
 
 
@@ -50,6 +50,7 @@ class User(UUIDMixin, TimestampMixin, Base):
     last_active_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
         nullable=True,
+        default=lambda: datetime.now(timezone.utc),
         # index=True
     )
 
