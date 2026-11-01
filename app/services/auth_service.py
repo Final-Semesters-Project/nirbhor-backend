@@ -155,11 +155,15 @@ class AuthService:
             # unwrap the original asyncpg exception to route correctly
             if isinstance(e.orig, ForeignKeyViolationError):
                 logger.warning(f"FK violation in seeker registration: {raw}")
-                raise DomainValidationError(error_message=readable, raw_error=raw)
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if isinstance(e.orig, UniqueViolationError):
-                logger.warning(f"Unique violation in seeker registration: {raw}")
-                raise DomainIntegrityError(error_message=readable, raw_error=raw)
-            logger.error(f"Unhandled IntegrityError in seeker registration: {raw}")
+                logger.warning(
+                    f"Unique violation in seeker registration: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
+            logger.error(
+                f"Unhandled IntegrityError in seeker registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -260,12 +264,16 @@ class AuthService:
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
                 logger.warning(f"FK violation in provider registration: {raw}")
-                raise DomainValidationError(error_message=readable, raw_error=raw)
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if is_unique:
-                logger.warning(f"Unique violation in provider registration: {raw}")
-                raise DomainIntegrityError(error_message=readable, raw_error=raw)
+                logger.warning(
+                    f"Unique violation in provider registration: {raw}")
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
 
-            logger.error(f"Unhandled IntegrityError in provider registration: {raw}")
+            logger.error(
+                f"Unhandled IntegrityError in provider registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -328,6 +336,13 @@ class AuthService:
             device_info=device_info,
         )
 
+        now = datetime.now(timezone.utc)
+
+        user.last_active_at = now
+
+        # update the last_active_at field
+        await user_repo.update_last_active(user.id, now)
+
         await db.commit()
         UserCacheService.set(str(result.user_id), user)
 
@@ -376,7 +391,8 @@ class AuthService:
 
         deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
         if not deleted:
-            logger.warning(f"Logout: refresh token not found for user {user_id}")
+            logger.warning(
+                f"Logout: refresh token not found for user {user_id}")
 
         payload = Security.decode_access_token(access_token)
 
