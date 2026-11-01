@@ -1,9 +1,12 @@
+from datetime import datetime, timedelta, timezone
+
+from cachetools import cached
 from cachetools.func import ttl_cache
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, update
 
 # from app.core.cache_user import CacheService
 # from app.core.jwt import decode_access_token
@@ -56,6 +59,16 @@ async def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Account is suspended",
                 )
+
+            now = datetime.now(timezone.utc)
+            if cached_user.last_active_at is None or now - cached_user.last_active_at > timedelta(minutes=5):
+                # also updates the cached copy, so the throttle holds
+                cached_user.last_active_at = now
+                await db.execute(
+                    update(User).where(User.id == cached_user.id).values(
+                        last_active_at=now)
+                )
+                await db.commit()
             return cached_user
 
         # get the user from database if not in cache

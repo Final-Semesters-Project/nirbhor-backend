@@ -217,6 +217,7 @@ class AuthService:
                 longitude=data.longitude,
                 working_radius_km=data.working_radius_km,
                 user_id=user.id,
+                base_address=data.base_address,
             )
 
             if len(data.skill_ids) == 0:
