@@ -2,7 +2,7 @@ from loguru import logger
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 from app.api.v1.router import api_router
-from fastapi import FastAPI
+from fastapi import FastAPI, status
 from app.core.cloudinary_helpers import init_cloudinary
 from app.core.config import settings
 from app.core.exceptions import register_exception_handlers
@@ -149,7 +149,7 @@ register_exception_handlers(app)
 app.add_exception_handler(RateLimitExceeded, rate_limit_exceeded_handler)
 
 
-# add the middleware 
+# add the middleware
 app.add_middleware(SlowAPIMiddleware)
 
 
@@ -158,6 +158,12 @@ app.add_middleware(SlowAPIMiddleware)
 @app.head("/")
 async def root():
     return {"status": "awake"}
+
+
+@app.get("/health", status_code=status.HTTP_200_OK)
+@app.head("/health",  status_code=status.HTTP_200_OK)
+async def health_check():
+    return {"status": "ok", "service": "nirbhor-backend"}
 
 
 # register exception handlers to format all exceptions (pydantic, starlette, etc) to same format
