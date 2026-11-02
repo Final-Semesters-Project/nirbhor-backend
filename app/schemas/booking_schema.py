@@ -28,7 +28,9 @@ class BookingInitiateResponse(BaseModel):
 class BookingRespondFromNotificationSchema(BaseModel):
     """Seeker responds to the FCM follow-up notification."""
     hired: bool
-    work_schedule: datetime | None = None
+    # work_schedule: datetime | None = None
+    # FIXME: Made the work_schedule required if hired is true otherwise automated expires cannot be set and FCM notification cannot be sent
+    work_schedule: datetime
 
     @model_validator(mode="after")
     def work_schedule_required_if_hired(self) -> "BookingRespondFromNotificationSchema":
