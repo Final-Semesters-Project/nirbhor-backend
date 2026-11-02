@@ -37,9 +37,11 @@ class SeekerMeSchema(BaseModel):
     phone: str
     name: str
     is_active: bool
-    home_address: str
     created_at: datetime
     preferred_lang: str
+    home_address: str | None
+    latitude: float | None
+    longitude: float | None
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -72,7 +74,9 @@ class ProviderMeSchema(BaseModel):
         ...,
         description="Rejection reason of the provider if rejected. Show in the profile section if rejected",
     )
-    base_address: str
+    base_address: str | None
+    latitude: float | None
+    longitude: float | None
 
     working_radius_km: int
     has_smartphone: bool

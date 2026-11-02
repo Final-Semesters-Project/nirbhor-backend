@@ -1,5 +1,6 @@
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.geo import to_lat_lng
 from app.core.i18n import t
 from app.core.cache import UserCacheService
 from app.core.security import Security
@@ -29,6 +30,12 @@ class UserService:
                     status_code=status.HTTP_404_NOT_FOUND,
                     detail=t("user_not_found", lang),
                 )
+
+            point = to_lat_lng(profile.home_location)
+
+            lat = point[0] if point else None
+            lng = point[1] if point else None
+
             return SeekerMeSchema(
                 user_id=current_user.id,
                 role=current_user.role,
@@ -36,6 +43,8 @@ class UserService:
                 name=localized_name,
                 is_active=current_user.is_active,
                 home_address=profile.home_address,
+                latitude=lat,
+                longitude=lng,
                 created_at=current_user.created_at,
                 preferred_lang=current_user.preferred_lang,
             )
@@ -61,6 +70,13 @@ class UserService:
                 else profile.ai_review_summary_en
             )
 
+            point = to_lat_lng(profile.base_location)
+
+            lat = point[0] if point else None
+            lng = point[1] if point else None
+
+            base_address = profile.base_address if profile.base_address != "" else None
+
             return ProviderMeSchema(
                 user_id=current_user.id,
                 role=current_user.role,
@@ -69,7 +85,9 @@ class UserService:
                 is_active=current_user.is_active,
                 verification_level=profile.verification_level,
                 verification_status=profile.verification_status,
-                base_address=profile.base_address if profile.base_address else "????",
+                latitude=lat,
+                longitude=lng,
+                base_address=profile.base_address,
                 working_radius_km=profile.working_radius_km,
                 has_smartphone=profile.has_smartphone,
                 is_available=profile.is_available,
