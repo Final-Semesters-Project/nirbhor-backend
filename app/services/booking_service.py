@@ -10,6 +10,7 @@ from app.core.paginator import paginate
 from app.models.booking_model import Booking, BookingStatus
 from app.models.provider_profile_model import ProviderProfile
 from app.repositories.booking_repository import BookingRepository
+from app.repositories.review_repository import ReviewRepository
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.booking_schema import (
@@ -146,6 +147,7 @@ class BookingService:
 
         booking_repo = BookingRepository(db)
         user_repo = UserRepository(db)
+        review_repo = ReviewRepository(db)
 
         booking = await booking_repo.get_single_booking(booking_id)
         if not booking:
@@ -172,6 +174,17 @@ class BookingService:
             lng = point.x
             lat = point.y
 
+        # check if the current user submitted a review for this booking
+        reviews = await review_repo.get_existing_review(
+            booking_id=booking.id,
+            reviewer_id=current_user_id,
+        )
+
+        if reviews is not None:
+            is_reviewed = True
+        else:
+            is_reviewed = False
+
         return SingleBookingDetailResponse(
             booking_id=booking.id,
             status=booking.status,
@@ -190,7 +203,7 @@ class BookingService:
             # Provider sees seeker phone only when IN_PROGRESS (they need to go there).
             other_party_phone=other.phone_en if other else None,
             job_latitude=lat,
-            job_longitude=lng,
+            job_longitude=lng, has_reviewed=is_reviewed
         )
 
     @staticmethod

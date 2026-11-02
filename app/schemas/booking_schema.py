@@ -78,7 +78,10 @@ class SingleBookingDetailResponse(BaseModel):
     job_latitude: float | None
     job_longitude: float | None
 
-    model_config = {"from_attributes": True}
+    # dynamically added fields
+    has_reviewed: bool
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class BookingDetailsForLastInitiatedActiveBooking(BaseModel):
