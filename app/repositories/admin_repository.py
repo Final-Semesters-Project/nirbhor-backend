@@ -34,7 +34,8 @@ class AdminRepository(BaseRepository):
                 func.count(case((User.role == Role.PROVIDER, 1))).label(
                     "total_providers"
                 ),
-                func.count(case((User.role == Role.SEEKER, 1))).label("total_seekers"),
+                func.count(case((User.role == Role.SEEKER, 1))
+                           ).label("total_seekers"),
                 func.count(
                     case(
                         (
@@ -65,6 +66,8 @@ class AdminRepository(BaseRepository):
                 .select_from(UserReport)
                 .where(UserReport.status == ReportStatus.PENDING)
             ),
+            # FIXME: Was giving warning for not having return exceptions
+            return_exceptions=False,
         )
 
         return {
@@ -252,7 +255,8 @@ class AdminRepository(BaseRepository):
                 func.count(case((User.role == Role.PROVIDER, 1))).label(
                     "total_providers"
                 ),
-                func.count(case((User.role == Role.SEEKER, 1))).label("total_seekers"),
+                func.count(case((User.role == Role.SEEKER, 1))
+                           ).label("total_seekers"),
                 func.count(
                     case(
                         (
@@ -294,7 +298,8 @@ class AdminRepository(BaseRepository):
 
         weekly_result = await self.db.execute(
             select(
-                func.date_trunc("week", Booking.created_at).label("week_start"),
+                func.date_trunc("week", Booking.created_at).label(
+                    "week_start"),
                 func.count().label("count"),
             )
             .where(Booking.created_at >= now - timedelta(weeks=8))
@@ -307,7 +312,8 @@ class AdminRepository(BaseRepository):
 
         seeker_count = (user_counts or {}).get("total_seekers") or 0
         provider_count = (user_counts or {}).get("total_providers") or 0
-        ratio = round(seeker_count / provider_count, 2) if provider_count > 0 else None
+        ratio = round(seeker_count / provider_count,
+                      2) if provider_count > 0 else None
 
         return {
             "total_users": (user_counts or {}).get("total_users") or 0,

@@ -60,6 +60,8 @@ async def get_current_user(
                     detail="Account is suspended",
                 )
 
+            await _touch_last_active(cached_user, db)
+
             now = datetime.now(timezone.utc)
             if cached_user.last_active_at is None or now - cached_user.last_active_at > timedelta(minutes=5):
                 # also updates the cached copy, so the throttle holds
@@ -88,6 +90,8 @@ async def get_current_user(
 
         # create cache
         UserCacheService.set(user_id, user)
+
+        await _touch_last_active(user, db)
 
         return user
     except HTTPException:
@@ -148,3 +152,25 @@ def get_current_admin_or_super_admin(
     if current_user.role not in (Role.ADMIN, Role.SUPER_ADMIN):
         raise DomainValidationError("Admin access required.")
     return current_user
+
+
+# ==================== Last Active At ====================
+TOUCH_INTERVAL = timedelta(hours=6)
+
+
+async def _touch_last_active(user: User, db: AsyncSession) -> None:
+    """Refresh users.last_active_at at most once per TOUCH_INTERVAL."""
+    if user.role != Role.PROVIDER:   # only providers are ranked on it; delete this line to cover everyone
+        return
+
+    now = datetime.now(timezone.utc)
+
+    if user.last_active_at is not None and now - user.last_active_at < TOUCH_INTERVAL:
+        return                       # nothing to do on most requests
+
+    user.last_active_at = now        # updates the cached copy too, so the throttle holds
+
+    await db.execute(
+        update(User).where(User.id == user.id).values(last_active_at=now)
+    )
+    await db.commit()
