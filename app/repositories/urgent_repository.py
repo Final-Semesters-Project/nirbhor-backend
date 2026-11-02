@@ -47,7 +47,7 @@ class UrgentBroadcastRepository:
         await self.db.flush()
         return broadcast
 
-    async def get_nearby_fcm_tokens_to_create_urgent_broadcast_notification(
+    async def get_nearby_fcm_tokens(
         self,
         latitude: float,
         longitude: float,

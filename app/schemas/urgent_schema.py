@@ -12,9 +12,9 @@ class UrgentBroadcastCreateSchema(BaseModel):
 
 class UrgentBroadcastCreateResponse(BaseModel):
     """Seeker receives this when they initiate an urgent broadcast."""
-    broadcast_id: UUID
-    status: BroadcastStatus
-    expires_at: datetime
+    broadcast_id: UUID | None
+    status: BroadcastStatus | str
+    expires_at: datetime | None
     message: str
 
     model_config = ConfigDict(from_attributes=True)
