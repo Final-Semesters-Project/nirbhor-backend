@@ -1,3 +1,4 @@
+import hashlib
 import secrets
 import asyncio
 from passlib.context import CryptContext
@@ -13,7 +14,8 @@ from app.core.config import settings
 #     schemes=["argon2", "bcrypt"], deprecated="auto")
 
 password_context = CryptContext(
-    schemes=["argon2"], # argon2 only, no bcrypt fallback. If bcrypt is needed, use bcrypt==4.2.1 
+    # argon2 only, no bcrypt fallback. If bcrypt is needed, use bcrypt==4.2.1
+    schemes=["argon2"],
     deprecated="auto")
 
 
@@ -161,3 +163,7 @@ class Security:
                 detail="Invalid refresh token",
                 headers={"WWW-Authenticate": "Bearer"},
             )
+
+    @staticmethod
+    def hash_token(token: str) -> str:
+        return hashlib.sha256(token.encode()).hexdigest()

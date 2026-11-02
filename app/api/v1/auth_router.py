@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Header, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -10,6 +10,7 @@ from app.models.user_model import User
 from app.schemas.auth_schema import (
     FCMTokenRequest,
     LogoutSchema,
+    RefreshTokenSchema,
     SeekerRegisterSchema,
     ProviderRegisterSchema,
     AuthResponseSchema,
@@ -82,6 +83,33 @@ async def password_login(
     return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
 
 
+@router.post("/refresh", response_model=AuthResponseSchema, status_code=200)
+async def refresh_tokens(
+    request: Request,
+    response: Response,
+    data: RefreshTokenSchema | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    device_info: str | None = Depends(get_device_info),
+    lang: str = Depends(get_lang),
+):
+    raw_refresh_token = (
+        data.refresh_token
+        if data is not None
+        else request.cookies.get("refresh_token")
+    )
+    if not raw_refresh_token:
+        raise HTTPException(
+            status_code=401, detail="Refresh token is required.")
+
+    return await AuthService.refresh_tokens(
+        raw_refresh_token=raw_refresh_token,
+        response=response,
+        db=db,
+        lang=lang,
+        device_info=device_info,
+    )
+
+
 @router.post("/fcm/token", status_code=201)
 async def register_fcm_token(
     data: FCMTokenRequest,
@@ -100,7 +128,9 @@ async def register_fcm_token(
 
 @router.post("/logout", status_code=200)
 async def logout(
-    data: LogoutSchema,
+    request: Request,
+    response: Response,
+    data: LogoutSchema | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
@@ -113,10 +143,19 @@ async def logout(
     - Optionally removes this device's FCM token
     """
     access_token = authorization.replace("Bearer ", "")
-    return await AuthService.logout(
+    if data is None:
+        data = LogoutSchema(
+            refresh_token=request.cookies.get("refresh_token")
+        )
+    elif data.refresh_token is None:
+        data.refresh_token = request.cookies.get("refresh_token")
+
+    result = await AuthService.logout(
         data=data,
         access_token=access_token,
         user_id=current_user.id,
         db=db,
         lang=lang,
     )
+    response.delete_cookie("refresh_token", samesite="none", secure=True)
+    return result
