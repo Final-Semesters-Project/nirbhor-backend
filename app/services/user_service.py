@@ -1,10 +1,13 @@
 from fastapi import HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.i18n import t
+from app.core.cache import UserCacheService
+from app.core.security import Security
 from app.models.user_model import Role, User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.seeker_repository import SeekerRepository
-from app.schemas.user_schema import AdminMeSchema, ProviderMeSchema, SeekerMeSchema
+from app.repositories.user_repository import UserRepository
+from app.schemas.user_schema import AdminMeSchema, PreferredLanguageToggleSchema, ProviderMeSchema, SeekerMeSchema, UpdatePasswordSchema
 
 
 class UserService:
@@ -34,6 +37,7 @@ class UserService:
                 is_active=current_user.is_active,
                 home_address=profile.home_address,
                 created_at=current_user.created_at,
+                preferred_lang=current_user.preferred_lang,
             )
 
         elif current_user.role == Role.PROVIDER:
@@ -77,6 +81,7 @@ class UserService:
                 ai_review_summary=localized_summary,
                 created_at=current_user.created_at,
                 verification_rejection_reason=profile.verification_rejection_reason,
+                preferred_lang=current_user.preferred_lang,
             )
 
         # admin
@@ -88,3 +93,59 @@ class UserService:
             is_active=current_user.is_active,
             created_at=current_user.created_at,
         )
+
+    @staticmethod
+    async def update_password(
+            data: UpdatePasswordSchema,
+            current_user: User, db: AsyncSession, lang: str
+    ):
+        # if len(data.new_password) < 8:
+        #     raise HTTPException(
+        #         status_code=status.HTTP_400_BAD_REQUEST,
+        #         detail=t("password_too_short", lang),
+        #     )
+
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(current_user.id)
+
+        if user is None:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=t("user_not_found", lang),
+            )
+
+        is_current_password_valid = await Security.verify_password_async(
+            data.current_password,
+            user.password_hash,
+        )
+        if not is_current_password_valid:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=t("invalid_current_password", lang),
+            )
+
+        new_password_hash = await Security.hash_password_async(data.new_password)
+        await user_repo.update(instance=user, password_hash=new_password_hash)
+        await db.commit()
+
+        UserCacheService.set(str(user.id), user)
+
+        return t("password_updated", lang)
+
+    @staticmethod
+    async def toggle_preferred_language(
+        data: PreferredLanguageToggleSchema,
+        current_user: User, db: AsyncSession, lang: str
+    ):
+        user_repo = UserRepository(db)
+
+        # update user preferred language
+        await user_repo.update(
+            instance=current_user, preferred_lang=data.preferred_language
+        )
+        await db.commit()
+
+        # Keep subsequent authenticated requests using the latest user data.
+        UserCacheService.set(str(current_user.id), current_user)
+
+        return t("language_updated", lang)

@@ -1,11 +1,34 @@
 from typing import Literal
 
 from click.utils import R
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 import uuid
 from app.models.provider_profile_model import VerificationLevel, VerificationStatus
 from app.models.user_model import Role
 from datetime import datetime
+from app.core.schema_validators import validate_password
+
+
+class PreferredLanguageToggleSchema(BaseModel):
+    preferred_language: str = Field(
+        examples=['en', 'bn'],
+        description="Preferred language. Values: ['en', 'bn']")
+
+
+class UpdatePasswordSchema(BaseModel):
+    current_password: str
+
+    @field_validator("current_password", mode="after")
+    @classmethod
+    def validate_current_password(cls, v: str, info: ValidationInfo) -> str:
+        return validate_password(v, info=info)
+
+    new_password: str
+
+    @field_validator("new_password", mode="after")
+    @classmethod
+    def validate_new_password(cls, v: str, info: ValidationInfo) -> str:
+        return validate_password(v, info=info)
 
 
 class SeekerMeSchema(BaseModel):
@@ -16,6 +39,7 @@ class SeekerMeSchema(BaseModel):
     is_active: bool
     home_address: str
     created_at: datetime
+    preferred_lang: str
     model_config = ConfigDict(from_attributes=True)
 
 
@@ -35,6 +59,7 @@ class ProviderMeSchema(BaseModel):
     phone: str
     name: str
     is_active: bool
+    preferred_lang: str
     verification_level: VerificationLevel = Field(
         ...,
         description="Verification level of the provider. (basic, verified, trusted)",
