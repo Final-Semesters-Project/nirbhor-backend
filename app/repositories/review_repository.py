@@ -4,6 +4,7 @@ from sqlalchemy import select
 
 from app.models.review_model import Review
 from app.models.booking_model import Booking, BookingStatus
+from app.models.user_model import User
 from app.repositories.base_repository import BaseRepository
 
 
@@ -69,3 +70,20 @@ class ReviewRepository(BaseRepository[Review]):
             .where(Review.reviewee_id == provider_id)
         )
         return result.scalar_one_or_none()
+
+    def get_all_review_for_a_provider(
+        self, provider_id: UUID
+    ):
+        """
+        Returns the SELECT statement for provider reviews.
+        Used by both paginate() to create paginated response.
+
+        NOT async — returns a Select object, not a coroutine.
+        The paginator needs the raw statement to apply LIMIT/OFFSET and COUNT.
+        """
+        return (
+            select(Review, User)
+            .join(User, Review.reviewer_id == User.id)
+            .where(Review.reviewee_id == provider_id)
+            .order_by(Review.created_at.desc())
+        )

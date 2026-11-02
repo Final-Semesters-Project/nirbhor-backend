@@ -1,3 +1,5 @@
+from datetime import datetime
+
 from pydantic import BaseModel, field_validator, ConfigDict, Field
 from uuid import UUID
 
@@ -25,3 +27,12 @@ class ReviewResponse(BaseModel):
     is_anonymous: bool
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class reviewListItem(BaseModel):
+    review_id: UUID
+    reviewer_name: str
+    rating: int
+    comment: str | None
+    is_anonymous: bool
+    created_at: datetime
