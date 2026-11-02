@@ -5,7 +5,7 @@ from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
-from app.schemas.provider_schema import ProviderProfileUpdateSchema, AddNewSkillSchema, PublicProviderProfile
+from app.schemas.provider_schema import ProviderDashboardSchema, ProviderProfileUpdateSchema, AddNewSkillSchema, PublicProviderProfile
 from app.services.provider_service import ProviderService
 
 router = APIRouter(prefix="/provider", tags=["Provider Management"])
@@ -32,7 +32,8 @@ async def add_skills(
 @router.get(
     "/dashboard",
     summary="Get provider dashboard data",
-    status_code=status.HTTP_200_OK
+    status_code=status.HTTP_200_OK,
+    response_model=ProviderDashboardSchema
 )
 async def get_provider_dashboard(
     current_user: User = Depends(get_current_provider),
