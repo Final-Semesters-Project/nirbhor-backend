@@ -40,7 +40,7 @@ class ProviderService:
         current_user: User,
         db: AsyncSession,
         lang: str
-    ):
+    ) -> ProviderDashboardSchema:
         # Dynamically select the localized name variant
         localized_name = current_user.name_bn if lang == "bn" else current_user.name_en
 
@@ -111,7 +111,8 @@ class ProviderService:
         if lat is not None or lng is not None or address is not None:
             # any one of them present means "this is a location change"
             if lat is None or lng is None or address is None:
-                raise DomainValidationError(t("location_fields_together", lang))
+                raise DomainValidationError(
+                    t("location_fields_together", lang))
 
             days_difference = (datetime.now(timezone.utc) -
                                provider_instance.location_updated_at).days
