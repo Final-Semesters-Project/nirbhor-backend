@@ -109,7 +109,7 @@ class RefreshTokenSchema(BaseModel):
 
 
 class LogoutSchema(BaseModel):
-    refresh_token: str
+    refresh_token: str | None = None
     fcm_token: str | None = None  # optional: also clear this device's FCM token
 
 
