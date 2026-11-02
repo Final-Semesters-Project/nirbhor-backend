@@ -13,7 +13,8 @@ class UrgentBroadcastCreateSchema(BaseModel):
 class UrgentBroadcastCreateResponse(BaseModel):
     """Seeker receives this when they initiate an urgent broadcast."""
     broadcast_id: UUID | None
-    status: BroadcastStatus | str
+    status: BroadcastStatus | str = Field(...,
+                                          description="broadcasting or no_providers")
     expires_at: datetime | None
     message: str
 

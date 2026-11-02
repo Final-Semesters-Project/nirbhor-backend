@@ -2,10 +2,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
+from app.core.paginator import paginate
 from app.models.provider_profile_model import ProviderProfile
+from app.models.review_model import Review
 from app.models.user_model import Role
 from app.repositories.review_repository import ReviewRepository
-from app.schemas.review_schema import ReviewCreateSchema, ReviewResponse
+from app.schemas.pagination_schema import PageResponse
+from app.schemas.review_schema import ReviewCreateSchema, ReviewResponse, reviewListItem
 from loguru import logger
 
 
@@ -78,4 +81,38 @@ class ReviewService:
             rating=review.rating,
             comment=review.comment,
             is_anonymous=review.is_anonymous,
+        )
+
+    @staticmethod
+    async def get_provider_reviews(
+        provider_id: UUID,
+        db: AsyncSession,
+        lang: str,
+        page_size: int = 10,
+        page: int = 1,
+    ) -> PageResponse[reviewListItem]:
+        review_repo = ReviewRepository(db)
+
+        def transform(row):
+            review, seeker = row
+
+            reviewer_name = (seeker.name_bn if lang == "bn" else seeker.name_en) if review.is_anonymous else (
+                "Anonymous" if lang == "bn" else "ছদ্মনামা")
+            return reviewListItem(
+                comment=review.comment,
+                created_at=review.created_at,
+                is_anonymous=review.is_anonymous,
+                rating=review.rating,
+                review_id=review.id,
+                reviewer_name=reviewer_name,
+            )
+
+        return await paginate(
+            db=db,
+            stmt=review_repo.get_all_review_for_a_provider(
+                provider_id=provider_id),
+            pk_col=Review.id,
+            transformer=transform,
+            page_size=page_size,
+            page=page,
         )

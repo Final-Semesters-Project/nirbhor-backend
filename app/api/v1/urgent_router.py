@@ -1,5 +1,6 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, Request, Response
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
@@ -17,9 +18,10 @@ router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
     response_model=UrgentBroadcastCreateResponse,
     status_code=201
 )
-@limiter.limit("3/minute") # prevent broadcast spam
+@limiter.limit("3/minute")  # prevent broadcast spam
 async def create_urgent_broadcast(
     request: Request,
+    response: Response,
     data: UrgentBroadcastCreateSchema,
     current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
@@ -30,12 +32,15 @@ async def create_urgent_broadcast(
     Creates broadcast row + fires FCM to all nearby providers with smartphones.
     Expires in 5 minutes if no one claims.
     """
-    return await UrgentService.create_broadcast(
+    result = await UrgentService.create_broadcast(
         data=data,
         seeker_id=current_user.id,
         db=db,
         lang=lang,
     )
+    if result.status == "no_providers":
+        response.status_code = 200
+    return result
 
 
 @router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponseToProvider)

@@ -104,10 +104,10 @@ MESSAGES = {
         "password_updated": "Password updated successfully.",
         "invalid_refresh_token": "Invalid refresh token.",
         "refresh_token_expired_or_invalid": "Refresh token has expired or is invalid. Please login again.",
-        "no_providers_nearby": "No providers found in your area.",
+        "no_providers_nearby": "No one is available nearby right now. Please try a manual search.",
     },
     "bn": {
-        "no_providers_nearby": "আপনার এলাকার কোন সেবা প্রদানকারী পাওয়া যায়নি।",
+        "no_providers_nearby": "এই মুহূর্তে কাছাকাছি কেউ পাওয়া যায়নি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন।",
         "invalid_current_password": "বর্তমান পাসওয়ার্ডটি ভুল।",
         "password_updated": "পাসওয়ার্ড আপডেট করা হয়েছে।",
         "invalid_refresh_token": "রিফ্রেশ টোকেনটি সঠিক নয়।",
