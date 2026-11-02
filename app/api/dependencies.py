@@ -160,8 +160,8 @@ TOUCH_INTERVAL = timedelta(hours=6)
 
 async def _touch_last_active(user: User, db: AsyncSession) -> None:
     """Refresh users.last_active_at at most once per TOUCH_INTERVAL."""
-    if user.role != Role.PROVIDER:   # only providers are ranked on it; delete this line to cover everyone
-        return
+    # if user.role != Role.PROVIDER:   # only providers are ranked on it; delete this line to cover everyone
+    #     return
 
     now = datetime.now(timezone.utc)
 
