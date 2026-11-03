@@ -46,6 +46,8 @@ class AdminService:
             return None
         url, _ = cloudinary.utils.cloudinary_url(
             public_id,
+            # FIXME: type was added because cloudinary assumes the image is public by default
+            type="authenticated",
             sign_url=True,
             secure=True,
             # expires_at is not directly supported in Python SDK this way
