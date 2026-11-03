@@ -5,7 +5,7 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.repositories.base_repository import BaseRepository
-from sqlalchemy import case, select, func
+from sqlalchemy import and_, case, select, func
 from app.models.user_model import User, Role
 from app.models.provider_profile_model import (
     ProviderProfile,
@@ -182,14 +182,19 @@ class AdminRepository(BaseRepository):
 
     def get_users_stmt(
         self,
-        role_filter: str | None = None,
+        role_filter: Role | None = None,
         is_active_filter: bool | None = None,
     ):
         """
         Single model query → select(User).
         Each row is a User object (not a tuple) → access with row.name_en etc.
         """
-        stmt = select(User).order_by(User.created_at.desc())
+        stmt = select(User).order_by(User.created_at.desc()).where(
+            and_(
+                User.role != Role.ADMIN,
+                User.role != Role.SUPER_ADMIN
+            )
+        )
         if role_filter:
             stmt = stmt.where(User.role == role_filter)
         if is_active_filter is not None:
@@ -198,7 +203,7 @@ class AdminRepository(BaseRepository):
 
     async def get_users(
         self,
-        role_filter: str | None = None,
+        role_filter: Role | None = None,
         is_active_filter: bool | None = None,
     ) -> Sequence[User]:
         # stmt = select(User).order_by(User.created_at.desc())
