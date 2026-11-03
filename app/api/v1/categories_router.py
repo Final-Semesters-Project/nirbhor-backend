@@ -1,8 +1,7 @@
-from fastapi import Depends, HTTPException, status, APIRouter
-from loguru import logger
+from fastapi import Depends, APIRouter
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.dependencies import get_current_user, get_current_admin
-from app.core.i18n import MESSAGES, get_lang
+from app.api.dependencies import get_current_admin_or_super_admin
+from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.category_schema import CategoryCreateSchema, CategoryResponse
@@ -19,7 +18,7 @@ router = APIRouter(prefix="/category", tags=["Category Management"])
 )
 async def create_new_category(
     data: CategoryCreateSchema,
-    current_user: User = Depends(get_current_admin),
+    current_user: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
 ):
