@@ -61,6 +61,9 @@ class ProviderProfileUpdateSchema(BaseModel):
     nid_url_front: str | None = None
     nid_front_public_id: str | None = None
 
+    name_en: str | None = None
+    name_bn: str | None = None
+
     nid_url_back: str | None = None
     nid_back_public_id: str | None = None
 
@@ -72,7 +75,8 @@ class ProviderProfileUpdateSchema(BaseModel):
         None,
         description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
     )
-    base_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)] | None = None
+    base_address: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=5, max_length=255)] | None = None
     working_radius_km: int | None = None
     has_smartphone: bool | None = None
     is_available: bool | None = None
