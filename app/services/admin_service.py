@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from sqlalchemy.exc import IntegrityError
@@ -366,7 +367,7 @@ class AdminService:
         db: AsyncSession,
         page: int = 1,
         page_size: int = 20,
-        role_filter: str | None = None,
+        role_filter: Role | None = None,
         is_active_filter: bool | None = None,
     ) -> PageResponse[AdminUserListItem]:
         repo = AdminRepository(db)

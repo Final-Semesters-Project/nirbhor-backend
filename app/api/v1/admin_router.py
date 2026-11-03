@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 from fastapi import APIRouter, Depends, Query
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -118,7 +119,7 @@ async def handle_report(
 async def list_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    role: Role | None = Query(
+    role: Literal[Role.PROVIDER, Role.SEEKER] | None = Query(
         None, description="Filter: seeker and provider. No Admin and Super Admin will be shown"),
     is_active: bool | None = Query(
         None, description="Filter by active status"),
