@@ -263,7 +263,7 @@ class AdminService:
         def transform(row):
             report, reporter, reported = row
 
-            ReportListItem(
+            return ReportListItem(
                 report_id=report.id,
                 reporter_name=reporter.name_en,
                 reported_user_name=reported.name_en,
