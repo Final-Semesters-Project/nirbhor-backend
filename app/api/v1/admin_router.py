@@ -76,7 +76,9 @@ async def handle_verification(
 
 
 # ── Reports ────────────────────────────────────────────────────────────────────
-@router.get("/reports", response_model=PageResponse[ReportListItem])
+@router.get("/reports",
+            response_model=PageResponse[ReportListItem]
+            )
 async def list_reports(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
