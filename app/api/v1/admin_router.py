@@ -118,8 +118,10 @@ async def handle_report(
 async def list_users(
     page: int = Query(default=1, ge=1),
     page_size: int = Query(default=20, ge=1, le=100),
-    role: Role | None = Query(None, description="Filter: seeker, provider, admin"),
-    is_active: bool | None = Query(None, description="Filter by active status"),
+    role: Role | None = Query(
+        None, description="Filter: seeker and provider. No Admin and Super Admin will be shown"),
+    is_active: bool | None = Query(
+        None, description="Filter by active status"),
     _: User = Depends(get_current_admin_or_super_admin),
     db: AsyncSession = Depends(get_db_session),
 ):

@@ -45,7 +45,7 @@ async def get_nid_upload_signature(
         "timestamp":   timestamp,
         "folder":      folder,
         "public_id":   public_id,
-        "access_type": "authenticated",  # makes image private in Cloudinary
+        "type": "authenticated",  # makes image private in Cloudinary
         "overwrite":   True,
         "upload_preset": "nirbhor_nid",  # Cloudinary preset name
     }
@@ -62,7 +62,7 @@ async def get_nid_upload_signature(
         "cloud_name":  settings.CLOUDINARY_CLOUD_NAME,  # public, safe to expose
         "folder":      folder,
         "public_id":   public_id,
-        "access_type": "authenticated",
+        "type": "authenticated",
         "overwrite":   True,
         "upload_preset": "nirbhor_nid",
         # Signature expires in ~1 hour (Cloudinary default)
