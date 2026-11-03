@@ -47,6 +47,8 @@ class UserService:
                 longitude=lng,
                 created_at=current_user.created_at,
                 preferred_lang=current_user.preferred_lang,
+                photo_public_id=profile.photo_public_id,
+                photo_url=profile.photo_url,
             )
 
         elif current_user.role == Role.PROVIDER:
