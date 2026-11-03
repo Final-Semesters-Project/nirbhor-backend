@@ -5,6 +5,7 @@ from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.cache import UserCacheService
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
@@ -13,6 +14,7 @@ from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
 from fastapi import HTTPException, status
+from app.repositories.user_repository import UserRepository
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, PublicProviderProfile, SkillInfo
 from app.core.cloudinary_helpers import delete_image_from_cloudinary
 
@@ -89,6 +91,7 @@ class ProviderService:
         update_data: ProviderProfileUpdateSchema
     ) -> dict:
         provider_repo = ProviderRepository(db)
+        user_repo = UserRepository(db)
 
         # fetch the existing provider data
         provider_instance = await provider_repo.get_by_id(provider_id)
@@ -191,6 +194,29 @@ class ProviderService:
         await ProviderService._delete_old_image_if_changed(data_dict, "nid_back_public_id", provider_instance.nid_back_public_id)
 
         try:
+            # Extract and REMOVE the name fields from data_dict using pop
+            name_en = data_dict.pop("name_en", None)
+            name_bn = data_dict.pop("name_bn", None)
+
+            # Build the user update dictionary only if names were provided
+            user_data = {}
+            if name_en is not None:
+                user_data["name_en"] = name_en
+            if name_bn is not None:
+                user_data["name_bn"] = name_bn
+
+            # 3. Update the User table if needed
+            if user_data:
+                user_instance = await user_repo.get_by_id(provider_id)
+                if user_instance is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=t("user_not_found", lang),
+                    )
+                updated_user = await user_repo.update(instance=user_instance, **user_data)
+                # update the cached user
+                UserCacheService.set(str(updated_user.id), updated_user)
+
             updated_provider = await provider_repo.update(instance=provider_instance, **data_dict)
 
            # ── Verification status auto-transition ─────────────────────────────────
