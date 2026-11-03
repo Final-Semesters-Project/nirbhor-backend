@@ -76,6 +76,9 @@ class ReportActionResponse(BaseModel):
 
 
 # ── Users ──────────────────────────────────────────────────────────────────────
+class AdminUserFilterRoles(BaseModel):
+    role: Literal[Role.PROVIDER, Role.SEEKER]
+
 
 class AdminUserListItem(BaseModel):
     user_id: UUID
