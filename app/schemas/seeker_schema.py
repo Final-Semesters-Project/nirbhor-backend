@@ -15,11 +15,21 @@ class SeekerAddressUpdateSchema(BaseModel):
         ...,
         description="Limit updating location once in every 15 days and prompt to verify the working radius everytime the location is updated",
     )
-    home_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)]
+    home_address: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=5, max_length=255)]
 
 
 class SeekerAddressResponse(BaseModel):
     # all None when the seeker has not saved an address yet
     latitude: float | None = None
     longitude: float | None = None
-    home_address: Annotated[str, StringConstraints(strip_whitespace=True, min_length=5, max_length=255)] | None = None
+    home_address: Annotated[str, StringConstraints(
+        strip_whitespace=True, min_length=5, max_length=255)] | None = None
+
+
+class SeekerProfileUpdateSchema(BaseModel):
+    name_en: str | None = None
+    name_bn: str | None = None
+
+    photo_url: str | None = None
+    photo_public_id: str | None = None

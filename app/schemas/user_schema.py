@@ -39,6 +39,8 @@ class SeekerMeSchema(BaseModel):
     is_active: bool
     created_at: datetime
     preferred_lang: str
+    photo_url: str | None
+    photo_public_id: str | None
     home_address: str | None
     latitude: float | None
     longitude: float | None

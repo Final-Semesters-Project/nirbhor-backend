@@ -33,3 +33,7 @@ class SeekerProfile(TimestampMixin, Base):
     )
 
     home_address: Mapped[str] = mapped_column(String(255), nullable=False)
+
+    photo_url: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    photo_public_id: Mapped[str | None] = mapped_column(String, nullable=True)
