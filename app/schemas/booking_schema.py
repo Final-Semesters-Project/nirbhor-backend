@@ -57,6 +57,7 @@ class BookingListItem(BaseModel):
     # seeker sees provider info; provider sees seeker info
     other_party_name: str
     other_party_phone: str | None  # None until INITIATED for seeker view
+    other_party_id: UUID
 
     model_config = ConfigDict(from_attributes=True)
 
@@ -74,6 +75,7 @@ class SingleBookingDetailResponse(BaseModel):
     # The other party info — seeker sees provider, provider sees seeker
     other_party_name: str
     other_party_phone: str | None
+    other_party_id: UUID
     # Location of the job (shown to provider when IN_PROGRESS)
     job_latitude: float | None
     job_longitude: float | None
