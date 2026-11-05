@@ -10,6 +10,7 @@ class ReviewCreateSchema(BaseModel):
     comment: str | None = None
     is_anonymous: bool = Field(
         True, description="Default is True for Seekers and False for Providers")
+    final_cost: int | None = Field(default=None, ge=1, le=1_000_000)
 
     @field_validator("rating")
     @classmethod

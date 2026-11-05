@@ -130,4 +130,7 @@ class ProviderRepository(BaseRepository[ProviderProfile]):
             "ai_review_summary": ai_summary,
             "skills": skills,
             "last_active_at": user.last_active_at,
+            "cost_range_min": profile.cost_range_min,
+            "cost_range_max": profile.cost_range_max,
+            "cost_sample_count": profile.cost_sample_count,
         }

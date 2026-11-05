@@ -26,6 +26,8 @@ class ProviderSearchRow:
     is_available: bool
     distance_km: float
     score: float
+    cost_range_min: int | None
+    cost_range_max: int | None
 
 
 class SearchRepository:
@@ -95,7 +97,8 @@ class SearchRepository:
         # object so ST_Distance returns meters (not degrees).
         # ST_Distance with geography=True returns meters
         distance_m = ST_Distance(
-            ProviderProfile.base_location.cast(Geography), seeker_point.cast(Geography)
+            ProviderProfile.base_location.cast(
+                Geography), seeker_point.cast(Geography)
         )
         distance_km = distance_m / 1000.0
 
@@ -131,7 +134,8 @@ class SearchRepository:
         )
 
         name_col = (
-            func.coalesce(User.name_bn, User.name_en) if lang == "bn" else User.name_en
+            func.coalesce(
+                User.name_bn, User.name_en) if lang == "bn" else User.name_en
         )
 
         stmt = (
@@ -145,6 +149,8 @@ class SearchRepository:
                 ProviderProfile.has_smartphone,
                 ProviderProfile.is_available,
                 ProviderProfile.photo_url,
+                ProviderProfile.cost_range_min,
+                ProviderProfile.cost_range_max,
                 distance_km.label("distance_km"),
                 ranking_score.label("score"),
             )

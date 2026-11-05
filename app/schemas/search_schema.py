@@ -17,6 +17,8 @@ class ProviderSearchResult(BaseModel):
     has_smartphone: bool
     is_available: bool
     last_active_at: datetime | None
+    cost_range_max: int | None
+    cost_range_min: int | None
 
 
 class ProviderSearchResponse(BaseModel):
