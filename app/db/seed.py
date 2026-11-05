@@ -46,7 +46,8 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
                 {"name_en": "Electrician", "name_bn": "ইলেকট্রিশিয়ান"},
                 {"name_en": "Plumber", "name_bn": "প্লাম্বার"},
                 {"name_en": "AC Servicing Helper", "name_bn": "এসি সার্ভিসিং"},
-                {"name_en": "Appliance Repair", "name_bn": "হোম অ্যাপ্লায়েন্স মেরামত"},
+                {"name_en": "Appliance Repair",
+                    "name_bn": "হোম অ্যাপ্লায়েন্স মেরামত"},
             ],
         },
         {
@@ -129,7 +130,8 @@ async def create_admin_users(db: AsyncSession) -> None:
         )
 
         db.add(user)
-
+    await db.commit()
+    logger.success("✅ Admin & super admin created successfully from seed data")
     # existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
     # if existing.scalar_one_or_none():
     #     logger.info("Admin already seeded. Skipping...")
@@ -138,13 +140,11 @@ async def create_admin_users(db: AsyncSession) -> None:
     #     phone_en=settings.ADMIN_PHONE,
     #     password_hash=Security.hash_password(settings.ADMIN_PASSWORD.get_secret_value()),
     #     role=Role.ADMIN,
-    #     name_en="Admin",
     #     name_bn="অ্যাডমিন",
+    #     name_en="Admin",
     #     is_active=True,
     # )
     # db.add(admin)
-    await db.commit()
-    logger.success("✅ Admin & super admin created successfully from seed data")
 
 
 async def seed_load_test_seeker(db: AsyncSession) -> None:
