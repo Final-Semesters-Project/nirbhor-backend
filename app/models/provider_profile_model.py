@@ -53,11 +53,13 @@ class ProviderProfile(TimestampMixin, Base):
 
     nid_url_front: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    nid_front_public_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    nid_front_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
 
     nid_url_back: Mapped[str | None] = mapped_column(String, nullable=True)
 
-    nid_back_public_id: Mapped[str | None] = mapped_column(String, nullable=True)
+    nid_back_public_id: Mapped[str | None] = mapped_column(
+        String, nullable=True)
 
     verification_level: Mapped[VerificationLevel] = mapped_column(
         sqlEnum(
@@ -111,17 +113,25 @@ class ProviderProfile(TimestampMixin, Base):
 
     has_smartphone: Mapped[bool] = mapped_column(Boolean, nullable=False)
 
-    is_available: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    is_available: Mapped[bool] = mapped_column(
+        Boolean, default=True, nullable=False)
 
     average_rating: Mapped[float | None] = mapped_column(
         Float, nullable=True, default=None
     )
 
-    warning_status: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    # cost_range_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # cost_range_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    # cost_sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
 
-    ai_review_summary_en: Mapped[str | None] = mapped_column(String, nullable=True)
+    warning_status: Mapped[bool] = mapped_column(
+        Boolean, default=False, nullable=False)
 
-    ai_review_summary_bn: Mapped[str | None] = mapped_column(String, nullable=True)
+    ai_review_summary_en: Mapped[str | None] = mapped_column(
+        String, nullable=True)
+
+    ai_review_summary_bn: Mapped[str | None] = mapped_column(
+        String, nullable=True)
 
     ai_summary_generated_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True),
