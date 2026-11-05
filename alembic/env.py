@@ -132,6 +132,8 @@ def run_migrations_online() -> None:
             include_object=include_object,
             # ↓ GeoAlchemy2's built-in render function — handles Geometry correctly
             render_item=alembic_helpers.render_item,
+            # ↓ detects type changes in columns
+            compare_type=True,
         )
 
         with context.begin_transaction():

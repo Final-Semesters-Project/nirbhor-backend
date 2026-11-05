@@ -1,7 +1,7 @@
 from app.db.base import Base
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
-from sqlalchemy import CheckConstraint, Float, Index, ForeignKey, Enum as sqlEnum, DateTime
+from sqlalchemy import CheckConstraint, Float, Index, ForeignKey, Enum as sqlEnum, DateTime, Integer
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
@@ -22,7 +22,8 @@ class Booking(UUIDMixin, TimestampMixin, Base):
 
     __table_args__ = (
         # New constraint for final cost validation
-        CheckConstraint("final_cost IS NULL OR final_cost > 0", name="ck_booking_final_cost_positive"),
+        CheckConstraint("final_cost IS NULL OR final_cost > 0",
+                        name="ck_booking_final_cost_positive"),
     )
 
     seeker_id: Mapped[uuid.UUID] = mapped_column(
@@ -96,7 +97,7 @@ class Booking(UUIDMixin, TimestampMixin, Base):
 
     # cost
     final_cost: Mapped[float] = mapped_column(
-        Float,
+        Integer,
         nullable=True,
         default=None,
     )
