@@ -91,6 +91,8 @@ class SearchService:
                 has_smartphone=r.has_smartphone,
                 is_available=r.is_available,
                 last_active_at=r.last_active_at,
+                cost_range_max=r.cost_range_max,
+                cost_range_min=r.cost_range_min
             )
             for r in rows
         ]

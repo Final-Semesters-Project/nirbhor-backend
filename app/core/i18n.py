@@ -106,8 +106,10 @@ MESSAGES = {
         "invalid_refresh_token": "Invalid refresh token.",
         "refresh_token_expired_or_invalid": "Refresh token has expired or is invalid. Please login again.",
         "no_providers_nearby": "No one is available nearby right now. Please try a manual search.",
+        "final_cost_seeker_only": "Final cost can only be set by the Seeker.",
     },
     "bn": {
+        "final_cost_seeker_only": "চূড়ান্ত খরচ শুধু সেবাপ্রার্থী দিতে পারবেন।",
         "no_providers_nearby": "এই মুহূর্তে কাছাকাছি কেউ পাওয়া যায়নি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন।",
         "invalid_current_password": "বর্তমান পাসওয়ার্ডটি ভুল।",
         "password_updated": "পাসওয়ার্ড আপডেট করা হয়েছে।",

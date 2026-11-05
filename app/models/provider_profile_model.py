@@ -120,9 +120,10 @@ class ProviderProfile(TimestampMixin, Base):
         Float, nullable=True, default=None
     )
 
-    # cost_range_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # cost_range_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
-    # cost_sample_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0, server_default="0")
+    cost_range_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_range_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_sample_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0")
 
     warning_status: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False)

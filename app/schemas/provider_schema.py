@@ -127,5 +127,8 @@ class PublicProviderProfile(BaseModel):
     ai_review_summary: str | None  # localized
     skills: list[PublicSkill]
     last_active_at: datetime | None
+    cost_range_min: int | None
+    cost_range_max: int | None
+    cost_sample_count: int
 
     model_config = ConfigDict(from_attributes=True)
