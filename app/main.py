@@ -11,6 +11,7 @@ from app.core.logging import setup_logging
 from app.core.rate_limiter import rate_limit_exceeded_handler, limiter
 from app.db.seed import seed_categories_and_skills, create_admin_users, seed_load_test_provider, seed_load_test_seeker
 from app.db.session import AsyncSessionLocal
+from app.jobs.provider_trust_job import evaluate_provider_trust
 
 # TODO: use UptimeRobot to keep Render app alive
 
@@ -88,6 +89,12 @@ async def lifespan(app: FastAPI):
     scheduler.add_job(
         cleanup_orphan_cloudinary_images,
         "cron", day_of_week="sun", hour=3, minute=0, max_instances=1
+    )
+
+    # Promote or Demote a provider. runs every day at 1:30 AM
+    scheduler.add_job(
+        evaluate_provider_trust,
+        "cron", hour=1, minute=30, max_instances=1
     )
 
     # start the scheduler
