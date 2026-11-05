@@ -167,6 +167,9 @@ class BookingService:
         else:
             other = await user_repo.get_by_id(booking.seeker_id)
 
+        if not other:
+            raise DomainValidationError(t("user_not_found", lang))
+
         # Extract job location coordinates from PostGIS point
         lat, lng = None, None
         if booking.job_location is not None:
@@ -203,7 +206,8 @@ class BookingService:
             # Provider sees seeker phone only when IN_PROGRESS (they need to go there).
             other_party_phone=other.phone_en if other else None,
             job_latitude=lat,
-            job_longitude=lng, has_reviewed=is_reviewed
+            job_longitude=lng, has_reviewed=is_reviewed,
+            other_party_id=other.id,
         )
 
     @staticmethod
@@ -341,6 +345,7 @@ class BookingService:
                 other_party_name=(seeker.name_bn if lang ==
                                   "bn" else seeker.name_en),
                 other_party_phone=seeker.phone_en,
+                other_party_id=seeker.id,
             )
 
         return await paginate(
@@ -390,7 +395,7 @@ class BookingService:
             localized_skill_name = (
                 booking.skill.name_bn if lang == "bn" else booking.skill.name_en
             )
-            logger.success(dict(result))
+            # logger.success(dict(result))
             result.append(
                 BookingListItem(
                     booking_id=booking.id,
@@ -401,6 +406,7 @@ class BookingService:
                     work_schedule=booking.work_schedule,
                     other_party_name=localized_name,
                     other_party_phone=seeker.phone_en,
+                    other_party_id=seeker.id,
                 )
             )
         return result
@@ -461,6 +467,7 @@ class BookingService:
                 work_schedule=booking.work_schedule,
                 other_party_name=provider.name_bn if lang == "bn" else provider.name_en,
                 other_party_phone=provider.phone_en,
+                other_party_id=provider.id,
             )
 
         # result = []
