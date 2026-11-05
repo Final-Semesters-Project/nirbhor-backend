@@ -77,9 +77,9 @@ class AdminService:
                 phone=user.phone_en,
                 photo_url=profile.photo_url,
                 nid_url_front=AdminService.get_signed_nid_url(
-                    profile.nid_url_front),
+                    profile.nid_front_public_id),
                 nid_url_back=AdminService.get_signed_nid_url(
-                    profile.nid_url_back),
+                    profile.nid_back_public_id),
                 verification_level=profile.verification_level.value,
                 verification_status=profile.verification_status.value,
                 submitted_at=profile.updated_at or profile.created_at,
