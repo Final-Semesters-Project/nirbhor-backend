@@ -1,21 +1,18 @@
 from datetime import datetime, timedelta, timezone
-
+import asyncio
 from cachetools import cached
 from cachetools.func import ttl_cache
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, update
-
-# from app.core.cache_user import CacheService
-# from app.core.jwt import decode_access_token
 from app.core.cache import TokenBlockListService, UserCacheService
 from app.core.exceptions import DomainValidationError
 from app.core.security import Security
 from app.db.session import get_db_session
 from app.models.user_model import User, Role
-import uuid
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
@@ -96,8 +93,15 @@ async def get_current_user(
         return user
     except HTTPException:
         raise
+    except (SQLAlchemyError, OSError, asyncio.TimeoutError) as e:
+        logger.error(f"Auth lookup failed (database): {e}")
+        raise HTTPException(
+            status_code=503, detail="Service temporarily unavailable")
     except Exception:
-        raise credentials_exception
+        logger.exception("Unexpected error in get_current_user")
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        )
 
 
 # ────────────── Role guards ──────────────
