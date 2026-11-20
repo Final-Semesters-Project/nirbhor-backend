@@ -4,6 +4,7 @@ from fastapi import HTTPException, status
 from loguru import logger
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.cache import UserCacheService
 from app.core.cloudinary_helpers import delete_image_from_cloudinary
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.geo import to_lat_lng
@@ -41,14 +42,21 @@ class SeekerService:
         user_id: UUID, data: SeekerAddressUpdateSchema, db: AsyncSession
     ):
         seeker_repo = SeekerRepository(db)
+        user_repo = UserRepository(db)
 
-        await seeker_repo.update_address(
+        updated_seeker_profile = await seeker_repo.update_address(
             user_id=user_id,
             latitude=data.latitude,
             longitude=data.longitude,
             address=data.home_address,
         )
         await db.commit()
+
+        if updated_seeker_profile:
+            user = await user_repo.get_by_id(updated_seeker_profile.user_id)
+
+            if user:
+                UserCacheService.set(str(user.id), user)
 
         # echo the input back: avoids re-reading a just-flushed geometry
         return {
@@ -99,8 +107,13 @@ class SeekerService:
         old_photo_public_id = seeker_instance.photo_public_id
 
         try:
-            await user_repo.update(instance=user_instance, **user_data)
-            await seeker_repo.update(instance=seeker_instance, **profile_data)
+            user_updated = False
+            if user_data:
+                updated_user = await user_repo.update(instance=user_instance, **user_data)
+                user_updated = True
+            if profile_data:
+                updated_profile = await seeker_repo.update(instance=seeker_instance, **profile_data)
+                user_updated = True
 
             await db.commit()
 
@@ -110,6 +123,9 @@ class SeekerService:
                 current_value=old_photo_public_id,
             )
 
+            if user_updated:
+                UserCacheService.set(str(user_instance.id), user_instance)
+
             return {
                 "message": t("profile_updated", lang)
             }
@@ -118,7 +134,7 @@ class SeekerService:
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
 
-            # e.orig may be a string (SQLAlchemy asyncpg dialect behaviour) or
+            # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
             # the actual asyncpg exception — handle both cases
             is_fk = (
                 isinstance(e.orig, ForeignKeyViolationError)
