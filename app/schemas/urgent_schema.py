@@ -62,3 +62,9 @@ class UrgentBroadcastDetailResponse(BaseModel):
     seeker_longitude: float | None
 
     model_config = ConfigDict(from_attributes=True)
+
+
+class UrgentBroadcastCancelResponse(BaseModel):
+    broadcast_id: UUID
+    status: BroadcastStatus
+    message: str
