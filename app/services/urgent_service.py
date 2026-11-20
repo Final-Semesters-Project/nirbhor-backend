@@ -11,7 +11,7 @@ from app.models.urgent_broadcast_model import BroadcastStatus
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
 from app.services.notification_service import NotificationService
 
 
@@ -222,3 +222,34 @@ class UrgentService:
         if not data:
             raise DomainValidationError(t("broadcast_not_found", lang))
         return BroadcastStatusResponseForSeeker(**data)
+
+    @staticmethod
+    async def cancel_broadcast(
+        broadcast_id: UUID,
+        db: AsyncSession,
+        lang: str,
+        current_user_id: UUID,
+    ):
+        urgent_repo = UrgentBroadcastRepository(db)
+
+        # check if broadcast exists and is BROADCASTING
+        broadcast = await urgent_repo.get_broadcast_by_id(broadcast_id)
+        if not broadcast or broadcast.status != BroadcastStatus.BROADCASTING:
+            raise DomainValidationError(t("broadcast_not_found", lang))
+
+        cancelled = await urgent_repo.cancel_broadcast(
+            broadcast_id=broadcast_id,
+            seeker_id=current_user_id,
+        )
+
+        if not cancelled:
+            await db.rollback()
+            raise DomainIntegrityError(t("broadcast_not_found", lang))
+
+        await db.commit()
+
+        return UrgentBroadcastCancelResponse(
+            broadcast_id=broadcast_id,
+            status=BroadcastStatus.EXPIRED,
+            message=t("broadcast_cancelled", lang),
+        )

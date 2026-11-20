@@ -98,3 +98,21 @@ async def get_broadcast_status(
         db=db,
         lang=lang,
     )
+
+
+@router.patch("/broadcast/{broadcast_id}/cancel", status_code=200)
+async def cancel_broadcast(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Seeker cancels an urgent broadcast by tapping 'Cancel'.
+    """
+    return await UrgentService.cancel_broadcast(
+        broadcast_id=broadcast_id,
+        db=db,
+        lang=lang,
+        current_user_id=current_user.id,
+    )
