@@ -59,15 +59,16 @@ async def get_current_user(
 
             await _touch_last_active(cached_user, db)
 
-            now = datetime.now(timezone.utc)
-            if cached_user.last_active_at is None or now - cached_user.last_active_at > timedelta(minutes=5):
-                # also updates the cached copy, so the throttle holds
-                cached_user.last_active_at = now
-                await db.execute(
-                    update(User).where(User.id == cached_user.id).values(
-                        last_active_at=now)
-                )
-                await db.commit()
+            # Don't need this 5 minute update block. Only 6 ours last_active_at block will be okay. 5 minute block consumes more cu hours on neon db
+            # now = datetime.now(timezone.utc)
+            # if cached_user.last_active_at is None or now - cached_user.last_active_at > timedelta(minutes=5):
+            # also updates the cached copy, so the throttle holds
+            # cached_user.last_active_at = now
+            # await db.execute(
+            # update(User).where(User.id == cached_user.id).values(
+            # last_active_at=now)
+            # )
+            # await db.commit()
             # logger.success(
             #     f"User returned from Cache in dependencies.py line 71: {user_id}")
             return cached_user
