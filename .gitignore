@@ -17,3 +17,6 @@ pytest.ini
 nirbhor_frontend_api_docs.md
 nirbhor_test_codes.md
 nirbhor_test_instructions.md
+
+# local-only files
+api_plannings.md
