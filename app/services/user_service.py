@@ -89,7 +89,7 @@ class UserService:
                 verification_status=profile.verification_status,
                 latitude=lat,
                 longitude=lng,
-                base_address=profile.base_address,
+                base_address=base_address,
                 working_radius_km=profile.working_radius_km,
                 has_smartphone=profile.has_smartphone,
                 is_available=profile.is_available,

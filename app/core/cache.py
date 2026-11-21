@@ -16,10 +16,12 @@ class UserCacheService:
 
     @staticmethod
     def get(user_id: str) -> User | None:
+        # logger.success(f"User Cache hit: {user_id}")
         return _user_cache.get(user_id)
 
     @staticmethod
     def set(user_id: str, user: User) -> None:
+        # logger.success(f"User Cache set for user: {user_id}. User: {user}")
         _user_cache[user_id] = user
 
     @staticmethod
