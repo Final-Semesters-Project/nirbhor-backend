@@ -1,24 +1,26 @@
+from datetime import datetime, timedelta, timezone
+import asyncio
+from cachetools import cached
 from cachetools.func import ttl_cache
 from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from loguru import logger
+from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
-# from app.core.cache_user import CacheService
-# from app.core.jwt import decode_access_token
+from sqlalchemy import select, update
 from app.core.cache import TokenBlockListService, UserCacheService
+from app.core.exceptions import DomainValidationError
 from app.core.security import Security
 from app.db.session import get_db_session
 from app.models.user_model import User, Role
-import uuid
 
 oauth2_scheme = OAuth2PasswordBearer(tokenUrl="api/v1/auth/login")
 
 
 async def get_current_user(
-        request: Request,
-        token: str = Depends(oauth2_scheme),
-        db: AsyncSession = Depends(get_db_session)
+    request: Request,
+    token: str = Depends(oauth2_scheme),
+    db: AsyncSession = Depends(get_db_session),
 ) -> User | None:
 
     credentials_exception = HTTPException(
@@ -54,6 +56,21 @@ async def get_current_user(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Account is suspended",
                 )
+
+            await _touch_last_active(cached_user, db)
+
+            # Don't need this 5 minute update block. Only 6 ours last_active_at block will be okay. 5 minute block consumes more cu hours on neon db
+            # now = datetime.now(timezone.utc)
+            # if cached_user.last_active_at is None or now - cached_user.last_active_at > timedelta(minutes=5):
+            # also updates the cached copy, so the throttle holds
+            # cached_user.last_active_at = now
+            # await db.execute(
+            # update(User).where(User.id == cached_user.id).values(
+            # last_active_at=now)
+            # )
+            # await db.commit()
+            # logger.success(
+            #     f"User returned from Cache in dependencies.py line 71: {user_id}")
             return cached_user
 
         # get the user from database if not in cache
@@ -68,18 +85,27 @@ async def get_current_user(
 
         if not user.is_active:
             raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Account is suspended"
+                status_code=status.HTTP_401_UNAUTHORIZED, detail="Account is suspended"
             )
 
         # create cache
         UserCacheService.set(user_id, user)
 
+        await _touch_last_active(user, db)
+        # logger.success(
+        #     f"User returned from DB in dependencies.py line 89: {user_id}")
         return user
     except HTTPException:
         raise
+    except (SQLAlchemyError, OSError, asyncio.TimeoutError) as e:
+        logger.error(f"Auth lookup failed (database): {e}")
+        raise HTTPException(
+            status_code=503, detail="Service temporarily unavailable")
     except Exception:
-        raise credentials_exception
+        logger.exception("Unexpected error in get_current_user")
+        raise HTTPException(
+            status_code=500, detail="Internal Server Error"
+        )
 
 
 # ────────────── Role guards ──────────────
@@ -114,3 +140,45 @@ async def get_current_admin(
             detail="This endpoint is for admins only",
         )
     return current_user
+
+
+async def get_current_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    if current_user.role != Role.SUPER_ADMIN:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="This endpoint is for super admins only",
+        )
+    return current_user
+
+
+def get_current_admin_or_super_admin(
+    current_user: User = Depends(get_current_user),
+) -> User:
+    """Allows both admin and super_admin roles."""
+    if current_user.role not in (Role.ADMIN, Role.SUPER_ADMIN):
+        raise DomainValidationError("Admin access required.")
+    return current_user
+
+
+# ==================== Last Active At ====================
+TOUCH_INTERVAL = timedelta(hours=6)
+
+
+async def _touch_last_active(user: User, db: AsyncSession) -> None:
+    """Refresh users.last_active_at at most once per TOUCH_INTERVAL."""
+    # if user.role != Role.PROVIDER:   # only providers are ranked on it; delete this line to cover everyone
+    #     return
+
+    now = datetime.now(timezone.utc)
+
+    if user.last_active_at is not None and now - user.last_active_at < TOUCH_INTERVAL:
+        return                       # nothing to do on most requests
+
+    user.last_active_at = now        # updates the cached copy too, so the throttle holds
+
+    await db.execute(
+        update(User).where(User.id == user.id).values(last_active_at=now)
+    )
+    await db.commit()

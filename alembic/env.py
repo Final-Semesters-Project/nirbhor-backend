@@ -6,7 +6,23 @@ from alembic import context
 from dotenv import load_dotenv
 from geoalchemy2 import alembic_helpers
 from app.db.base import Base
-from app.models import User, ProviderProfile, Category, Skill, ProviderSkillLink, FCMToken, Booking, Team, UrgentBroadcast, UserSession, UserReport, AppVersion, Review
+from app.models import (
+    User,
+    ProviderProfile,
+    Category,
+    Skill,
+    ProviderSkillLink,
+    FCMToken,
+    Booking,
+    Team,
+    UrgentBroadcast,
+    UserSession,
+    UserReport,
+    AppVersion,
+    Review,
+    AdminAuditLog,
+    SeekerProfile,
+)
 
 # import models from app.models to here manually if alembic doesn't generate them
 
@@ -43,7 +59,11 @@ def include_object(object, name, type_, reflected, compare_to):
 
     # 2. Skip sequences owned by PostGIS/Tiger extension
     # Explicitly ignore sequences owned by PostGIS/Tiger
-    if type_ == "sequence" and reflected and object.info.get("skip_autogenerate", False):
+    if (
+        type_ == "sequence"
+        and reflected
+        and object.info.get("skip_autogenerate", False)
+    ):
         return False
 
     # 3. Skip spatial indexes — GeoAlchemy2 creates these automatically.
@@ -112,6 +132,8 @@ def run_migrations_online() -> None:
             include_object=include_object,
             # ↓ GeoAlchemy2's built-in render function — handles Geometry correctly
             render_item=alembic_helpers.render_item,
+            # ↓ detects type changes in columns
+            compare_type=True,
         )
 
         with context.begin_transaction():

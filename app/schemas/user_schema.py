@@ -1,8 +1,34 @@
-from pydantic import BaseModel, ConfigDict, Field
+from typing import Literal
+
+from click.utils import R
+from pydantic import BaseModel, ConfigDict, Field, ValidationInfo, field_validator
 import uuid
 from app.models.provider_profile_model import VerificationLevel, VerificationStatus
 from app.models.user_model import Role
 from datetime import datetime
+from app.core.schema_validators import validate_password
+
+
+class PreferredLanguageToggleSchema(BaseModel):
+    preferred_language: str = Field(
+        examples=['en', 'bn'],
+        description="Preferred language. Values: ['en', 'bn']")
+
+
+class UpdatePasswordSchema(BaseModel):
+    current_password: str
+
+    @field_validator("current_password", mode="after")
+    @classmethod
+    def validate_current_password(cls, v: str, info: ValidationInfo) -> str:
+        return validate_password(v, info=info)
+
+    new_password: str
+
+    @field_validator("new_password", mode="after")
+    @classmethod
+    def validate_new_password(cls, v: str, info: ValidationInfo) -> str:
+        return validate_password(v, info=info)
 
 
 class SeekerMeSchema(BaseModel):
@@ -12,15 +38,32 @@ class SeekerMeSchema(BaseModel):
     name: str
     is_active: bool
     created_at: datetime
+    preferred_lang: str
+    photo_url: str | None
+    photo_public_id: str | None
+    home_address: str | None
+    latitude: float | None
+    longitude: float | None
+    model_config = ConfigDict(from_attributes=True)
+
+
+class AdminMeSchema(BaseModel):
+    user_id: uuid.UUID
+    role: Literal[Role.ADMIN, Role.SUPER_ADMIN]
+    phone: str
+    name: str
+    is_active: bool
+    created_at: datetime
     model_config = ConfigDict(from_attributes=True)
 
 
 class ProviderMeSchema(BaseModel):
     user_id: uuid.UUID
-    role: Role = Role.SEEKER
+    role: Role = Role.PROVIDER
     phone: str
     name: str
     is_active: bool
+    preferred_lang: str
     verification_level: VerificationLevel = Field(
         ...,
         description="Verification level of the provider. (basic, verified, trusted)",
@@ -30,9 +73,12 @@ class ProviderMeSchema(BaseModel):
         description="Verification status of the provider. (pending, approved, rejected). Disable Nid upload if approved. Let provider upload nid if rejected/pending",
     )
     verification_rejection_reason: str | None = Field(
-        ..., description="Rejection reason of the provider if rejected. Show in the profile section if rejected"
+        ...,
+        description="Rejection reason of the provider if rejected. Show in the profile section if rejected",
     )
-    # base_location: str, point?
+    base_address: str | None
+    latitude: float | None
+    longitude: float | None
 
     working_radius_km: int
     has_smartphone: bool

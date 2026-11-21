@@ -3,6 +3,7 @@ from typing import Type, TypeVar
 from fastapi import Depends, Request
 from loguru import logger
 from pydantic import BaseModel
+
 # Translation Dictionary for messages
 
 MESSAGES = {
@@ -62,7 +63,7 @@ MESSAGES = {
         "internal_server_error": "Internal server error. Please try again.",
         "nid_already_verified": "NID already verified. Can not upload again.",
         "booking_wrong_status": "This booking cannot be updated at this stage.",
-        "can_not_update_booking":  "You are not authorized to update this booking.",
+        "can_not_update_booking": "You are not authorized to update this booking.",
         "too_many_open_bookings": "You can unlock up to 10 provider numbers at a time. Please wait 2 hours before unlocking more.",
         "provider_unavailable": "This provider is currently unavailable.",
         "broadcast_not_found": "Broadcast not found or already expired.",
@@ -82,6 +83,7 @@ MESSAGES = {
         "booking_not_yours": "This booking does not belong to you.",
         "not_valid_rating": "rating must be between 1 and 5.",
         "report_not_found": "Report not found.",
+        "can_not_report_yourself": "You cannot report yourself.",
         "verification_updated": "Verification status updated.",
         "user_status_updated": "User status updated.",
         "report_status_updated": "Report status updated.",
@@ -92,8 +94,34 @@ MESSAGES = {
         "can_not_set_under_investigation": "Can only investigate new, pending reports now.",
         "logout_successful": "Logout successful.",
         "skill_ids_required": "Minimum of 1 skill is required.",
+        "invalid_booking_cost": "Cost must be greater than 0tk.",
+        "super_admin_only": "Super admin access required.",
+        "invalid_latitude": "Latitude must be between -90 and 90.",
+        "invalid_longitude": "Longitude must be between -180 and 180.",
+        "address_required": "Home address is required.",
+        "location_fields_together": "latitude, longitude and base_address must be updated together.",
+        "language_updated": "Language updated successfully.",
+        "invalid_current_password": "Current password is incorrect.",
+        "password_updated": "Password updated successfully.",
+        "invalid_refresh_token": "Invalid refresh token.",
+        "refresh_token_expired_or_invalid": "Refresh token has expired or is invalid. Please login again.",
+        "no_providers_nearby": "No one is available nearby right now. Please try a manual search.",
+        "final_cost_seeker_only": "Final cost can only be set by the Seeker.",
+        "broadcast_cancelled": "This urgent broadcast is cancelled.",
     },
     "bn": {
+        "broadcast_cancelled": "এই আর্জেন্ট ব্রেডক্যাস্টটি বাতিল করা হয়েছে।",
+        "final_cost_seeker_only": "চূড়ান্ত খরচ শুধু সেবাপ্রার্থী দিতে পারবেন।",
+        "no_providers_nearby": "এই মুহূর্তে কাছাকাছি কেউ পাওয়া যায়নি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন।",
+        "invalid_current_password": "বর্তমান পাসওয়ার্ডটি ভুল।",
+        "password_updated": "পাসওয়ার্ড আপডেট করা হয়েছে।",
+        "invalid_refresh_token": "রিফ্রেশ টোকেনটি সঠিক নয়।",
+        "refresh_token_expired_or_invalid": "রিফ্রেশ টোকেনটির মেয়াদ শেষ বা এটি সঠিক নয়। অনুগ্রহ করে আবার লগইন করুন।",
+        "language_updated": "ভাষা আপডেট করা হয়েছে।",
+        "location_fields_together": "অক্ষাংশ(latitude), দ্রাঘিমাংশ(longitude) এবং বাড়ির ঠিকানা একসাথে আপডেট করতে হবে।",
+        "address_required": "বাড়ির ঠিকানা অবশ্যই হতে হবে।",
+        "invalid_latitude": "অক্ষাংশ(latitude) অবশ্যই -৯০ থেকে ৯০ পর্যন্ত হতে হবে।",
+        "invalid_longitude": "দ্রাঘিমাংশ(longitude) অবশ্যই -১৮০ থেকে ১৮০ পর্যন্ত হতে হবে।",
         "registration_failed": "নিবন্ধন ব্যর্থ হয়েছে। অনুগ্রহ করে আবার চেষ্টা করুন।",
         "phone_number_exists": "এই ফোন নম্বর দিয়ে ইতিমধ্যে একটি অ্যাকাউন্ট তৈরি করা আছে।",
         "invalid_phone": "ভুল বাংলাদেশী ফোন নম্বর। অবশ্যই ০১ দিয়ে শুরু হওয়া ১১ ডিজিটের হতে হবে।",
@@ -169,6 +197,7 @@ MESSAGES = {
         "booking_not_yours": "এই বুকিং আপনার নয়।",
         "not_valid_rating": "রেটিং এর মান ১ থেকে ৫ এর মধ্যে হতে হবে।",
         "report_not_found": "রিপোর্ট পাওয়া যায়নি।",
+        "can_not_report_yourself": "আপনি নিজেকে রিপোর্ট করতে পারবেন না।",
         "verification_updated": "যাচাইকরণ অবস্থা আপডেট হয়েছে।",
         "user_status_updated": "ব্যবহারকারীর অবস্থা আপডেট হয়েছে।",
         "report_status_updated": "রিপোর্টের অবস্থা আপডেট হয়েছে।",
@@ -179,7 +208,9 @@ MESSAGES = {
         "can_not_set_under_investigation": "এখন শুধুমাত্র নতুন, পেন্ডিং রিপোর্ট তদন্ত করতে পারেন।",
         "logout_successful": "লগআউট সফল হয়েছে।",
         "skill_ids_required": "কমপক্ষে ১টি দক্ষতা নির্বাচন করুন।",
-    }
+        "invalid_booking_cost": "বুকিং খরচ অবশ্যই ০ টাকা হতে বেশি হতে হবে।",
+        "super_admin_only": "সুপার অ্যাডমিন অ্যাক্সেস প্রয়োজন।",
+    },
 }
 
 # =========================== Translation ===========================
@@ -212,7 +243,7 @@ message = lang_dict.get(key, MESSAGES["en"].get(key, key))
 """
 
 
-# TODO: Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
+# Use this as dependency in routers wherever the schema contains field validators => Depends(make_validated_body(YourSchema))
 T = TypeVar("T", bound=BaseModel)
 
 
@@ -226,6 +257,7 @@ def make_validated_body(schema_class: Type[T]):
     Usage:
         data: SeekerRegisterSchema = Depends(make_validated_body(SeekerRegisterSchema))
     """
+
     async def dependency(
         request: Request,
         lang: str = Depends(get_lang),

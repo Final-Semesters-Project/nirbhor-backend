@@ -265,8 +265,6 @@ class NotificationService:
             logger.error(f"FCM urgent broadcast failed: {e}")
 
     # ── Verification approved (called from request handler) ───────────────────
-    # TODO: Not used in admin service after provider verification
-
     @staticmethod
     async def send_verification_approved(
         provider_fcm_token: str,
@@ -297,4 +295,37 @@ class NotificationService:
                 android=messaging.AndroidConfig(priority="normal"),
                 apns=messaging.APNSConfig(headers={"apns-priority": "5"}),
             ))
-        logger.info(f"Verification approved FCM sent: {provider_fcm_token}")
+        logger.info(f"Verification approved FCM sent to: {provider_fcm_token}")
+
+    @staticmethod
+    async def send_verification_rejected(
+        provider_fcm_token: str,
+        preferred_lang: str,
+        reason: str | None
+    ) -> None:
+        """Called from admin_service.handle_verification() during an HTTP request."""
+        if not provider_fcm_token:
+            return
+
+        title = "যাচাইকরণ প্রত্যাখ্যাত!" if preferred_lang == "bn" else "Verification Rejected!"
+        body = (
+            f"আপনার অ্যাকাউন্ট যাচাইকরণ প্রত্যাখ্যান করা হয়েছে। কারণ: {reason}। পুনরায় আপনার সঠিক তথ্য প্রদান করুন।"
+            if preferred_lang == "bn"
+            else f"Your account verification was rejected. Reason: {reason}. Please provide the correct information."
+        )
+
+        await NotificationService._send(
+            message=messaging.Message(
+                token=provider_fcm_token,
+                data={
+                    "type": "VERIFICATION_REJECTED",
+                    "preferred_lang": preferred_lang
+                },
+                notification=messaging.Notification(
+                    title=title,
+                    body=body,
+                ),
+                android=messaging.AndroidConfig(priority="normal"),
+                apns=messaging.APNSConfig(headers={"apns-priority": "5"}),
+            ))
+        logger.info(f"Verification rejected FCM sent to: {provider_fcm_token}")

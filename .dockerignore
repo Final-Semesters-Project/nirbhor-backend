@@ -10,4 +10,11 @@ alembic/versions/*.pyc
 .idea
 .vscode
 *.db
-# test/ => exclude test folder in production
+tests/
+.gitignore
+*.md
+docker-compose*.yml
+Dockerfile.dev
+serviceAccountKey.json
+.gitattributes
+locustfile.py

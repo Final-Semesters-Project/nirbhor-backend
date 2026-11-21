@@ -1,20 +1,22 @@
-from fastapi import APIRouter, Depends, Header, status, Response, Request
+from fastapi import APIRouter, Depends, HTTPException, Header, status, Response, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from pydantic import BaseModel
-from app.api.dependencies import get_current_seeker, get_current_provider, get_current_user
+from app.api.dependencies import get_current_user
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.auth_schema import (
     FCMTokenRequest,
     LogoutSchema,
+    RefreshTokenSchema,
     SeekerRegisterSchema,
     ProviderRegisterSchema,
     AuthResponseSchema,
 )
 from app.services.auth_service import AuthService
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
@@ -30,7 +32,9 @@ def get_device_info(request: Request) -> str | None:
     status_code=status.HTTP_201_CREATED,
     summary="Register a new seeker account"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_seeker(
+    request: Request,
     response: Response,
     data: SeekerRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -46,7 +50,9 @@ async def register_seeker(
     status_code=status.HTTP_201_CREATED,
     summary="Register a new provider account(Transaction = user + profile)"
 )
+@limiter.limit("3/minute")  # limit to 3 requests per minute
 async def register_provider(
+    request: Request,
     response: Response,
     data: ProviderRegisterSchema,
     db: AsyncSession = Depends(get_db_session),
@@ -65,7 +71,9 @@ async def register_provider(
     status_code=status.HTTP_200_OK,
     summary="Login with phone number and password",
 )
+@limiter.limit("5/minute")  # limit to 5 requests per minute
 async def password_login(
+    request: Request,
     response: Response,
     form_data: OAuth2PasswordRequestForm = Depends(),
     db: AsyncSession = Depends(get_db_session),
@@ -73,6 +81,33 @@ async def password_login(
     lang: str = Depends(get_lang),
 ):
     return await AuthService.password_login(response=response, username=form_data.username, password=form_data.password, db=db, device_info=device_info, lang=lang)
+
+
+@router.post("/refresh", response_model=AuthResponseSchema, status_code=200)
+async def refresh_tokens(
+    request: Request,
+    response: Response,
+    data: RefreshTokenSchema | None = None,
+    db: AsyncSession = Depends(get_db_session),
+    device_info: str | None = Depends(get_device_info),
+    lang: str = Depends(get_lang),
+):
+    raw_refresh_token = (
+        data.refresh_token
+        if data is not None
+        else request.cookies.get("refresh_token")
+    )
+    if not raw_refresh_token:
+        raise HTTPException(
+            status_code=401, detail="Refresh token is required.")
+
+    return await AuthService.refresh_tokens(
+        raw_refresh_token=raw_refresh_token,
+        response=response,
+        db=db,
+        lang=lang,
+        device_info=device_info,
+    )
 
 
 @router.post("/fcm/token", status_code=201)
@@ -93,7 +128,9 @@ async def register_fcm_token(
 
 @router.post("/logout", status_code=200)
 async def logout(
-    data: LogoutSchema,
+    request: Request,
+    response: Response,
+    data: LogoutSchema | None = None,
     current_user: User = Depends(get_current_user),
     db: AsyncSession = Depends(get_db_session),
     lang: str = Depends(get_lang),
@@ -106,10 +143,19 @@ async def logout(
     - Optionally removes this device's FCM token
     """
     access_token = authorization.replace("Bearer ", "")
-    return await AuthService.logout(
+    if data is None:
+        data = LogoutSchema(
+            refresh_token=request.cookies.get("refresh_token")
+        )
+    elif data.refresh_token is None:
+        data.refresh_token = request.cookies.get("refresh_token")
+
+    result = await AuthService.logout(
         data=data,
         access_token=access_token,
         user_id=current_user.id,
         db=db,
         lang=lang,
     )
+    response.delete_cookie("refresh_token", samesite="none", secure=True)
+    return result

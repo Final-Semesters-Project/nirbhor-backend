@@ -2,10 +2,13 @@ from uuid import UUID
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
+from app.core.paginator import paginate
 from app.models.provider_profile_model import ProviderProfile
+from app.models.review_model import Review
 from app.models.user_model import Role
 from app.repositories.review_repository import ReviewRepository
-from app.schemas.review_schema import ReviewCreateSchema, ReviewResponse
+from app.schemas.pagination_schema import PageResponse
+from app.schemas.review_schema import ReviewCreateSchema, ReviewResponse, reviewListItem
 from loguru import logger
 
 
@@ -37,10 +40,16 @@ class ReviewService:
             else booking.seeker_id
         )
 
+        # if final cost is sent, make sure the reviewer is Seeker
+        if data.final_cost is not None and reviewer_id != booking.seeker_id:
+            raise DomainValidationError(t("final_cost_seeker_only", lang))
+
         # 4. One review per party per booking (check if reviewer has already reviewed)
         existing = await review_repo.get_existing_review(data.booking_id, reviewer_id)
         if existing:
             raise DomainIntegrityError(t("review_already_exists", lang))
+
+        can_post_anonymous = True if reviewer_role == Role.SEEKER else False
 
         # 5. Create review
         review = await review_repo.create_review(
@@ -49,12 +58,20 @@ class ReviewService:
             reviewee_id=reviewee_id,
             rating=data.rating,
             comment=data.comment,
-            is_anonymous=data.is_anonymous,
+            is_anonymous=can_post_anonymous,
         )
 
-        # 6. Recalculate provider's average rating
+        # 6. Recalculate provider's average rating and cost range
         # Only seeker→provider reviews affect public rating (spec: asymmetric trust)
         if reviewer_id == booking.seeker_id:
+            # update final cost range
+            if data.final_cost is not None and booking.final_cost is None:   # stored once
+                booking.final_cost = data.final_cost
+                await db.flush()                      # the aggregate must see the new row value
+
+                await review_repo.recompute_cost_range(reviewee_id)
+
+            # update average rating
             new_avg = await review_repo.recalculate_provider_rating(reviewee_id)
             if new_avg is not None:
                 provider_profile = await db.get(ProviderProfile, reviewee_id)
@@ -78,4 +95,38 @@ class ReviewService:
             rating=review.rating,
             comment=review.comment,
             is_anonymous=review.is_anonymous,
+        )
+
+    @staticmethod
+    async def get_provider_reviews(
+        provider_id: UUID,
+        db: AsyncSession,
+        lang: str,
+        page_size: int = 10,
+        page: int = 1,
+    ) -> PageResponse[reviewListItem]:
+        review_repo = ReviewRepository(db)
+
+        def transform(row):
+            review, seeker = row
+
+            reviewer_name = (seeker.name_bn if lang == "bn" else seeker.name_en) if review.is_anonymous else (
+                "Anonymous" if lang == "bn" else "ছদ্মনামা")
+            return reviewListItem(
+                comment=review.comment,
+                created_at=review.created_at,
+                is_anonymous=review.is_anonymous,
+                rating=review.rating,
+                review_id=review.id,
+                reviewer_name=reviewer_name,
+            )
+
+        return await paginate(
+            db=db,
+            stmt=review_repo.get_all_review_for_a_provider(
+                provider_id=provider_id),
+            pk_col=Review.id,
+            transformer=transform,
+            page_size=page_size,
+            page=page,
         )

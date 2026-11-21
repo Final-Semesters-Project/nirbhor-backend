@@ -1,3 +1,4 @@
+from typing import Literal
 from uuid import UUID
 from asyncpg import ForeignKeyViolationError, UniqueViolationError
 from sqlalchemy.exc import IntegrityError
@@ -5,9 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 from app.core.cache import UserCacheService
 from app.core.integrity_error_parser import parse_integrity_error
+from app.core.paginator import paginate
 from app.models.provider_profile_model import VerificationStatus
+from app.models.user_model import Role, User
 from app.repositories.admin_repository import AdminRepository
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.super_admin_repository import SuperAdminRepository
 from app.schemas.admin_schema import (
     AdminDashboardResponse,
     VerificationListItem,
@@ -20,10 +24,13 @@ from app.schemas.admin_schema import (
     AdminUserDetail,
     AdminAnalyticsResponse,
 )
-from app.models.user_report_model import ReportStatus
+from app.models.user_report_model import ReportStatus, UserReport
 from app.core.exceptions import DomainValidationError, DomainIntegrityError
 from app.core.i18n import t
 import cloudinary.utils
+
+from app.schemas.pagination_schema import PageResponse
+from app.services.notification_service import NotificationService
 
 
 class AdminService:
@@ -40,6 +47,8 @@ class AdminService:
             return None
         url, _ = cloudinary.utils.cloudinary_url(
             public_id,
+            # FIXME: type was added because cloudinary assumes the image is public by default
+            type="authenticated",
             sign_url=True,
             secure=True,
             # expires_at is not directly supported in Python SDK this way
@@ -55,26 +64,52 @@ class AdminService:
 
     @staticmethod
     async def get_pending_verifications(
-        db: AsyncSession, lang: str
-    ) -> list[VerificationListItem]:
+        db: AsyncSession, lang: str, page: int = 1, page_size: int = 20
+    ) -> PageResponse[VerificationListItem]:
         repo = AdminRepository(db)
-        rows = await repo.get_pending_verifications()
-        return [
-            VerificationListItem(
+
+        def transform(row):
+            # row is a tuple → (User, ProviderProfile)
+            user, profile = row
+            return VerificationListItem(
                 user_id=user.id,
                 name=user.name_en,
                 phone=user.phone_en,
                 photo_url=profile.photo_url,
                 nid_url_front=AdminService.get_signed_nid_url(
-                    profile.nid_url_front),
+                    profile.nid_front_public_id),
                 nid_url_back=AdminService.get_signed_nid_url(
-                    profile.nid_url_back),
+                    profile.nid_back_public_id),
                 verification_level=profile.verification_level.value,
                 verification_status=profile.verification_status.value,
                 submitted_at=profile.updated_at or profile.created_at,
             )
-            for user, profile in rows
-        ]
+
+        # These are for non-paginated results
+        # rows = await repo.get_pending_verifications()
+        # return [
+        #     VerificationListItem(
+        #         user_id=user.id,
+        #         name=user.name_en,
+        #         phone=user.phone_en,
+        #         photo_url=profile.photo_url,
+        #         nid_url_front=AdminService.get_signed_nid_url(profile.nid_url_front),
+        #         nid_url_back=AdminService.get_signed_nid_url(profile.nid_url_back),
+        #         verification_level=profile.verification_level.value,
+        #         verification_status=profile.verification_status.value,
+        #         submitted_at=profile.updated_at or profile.created_at,
+        #     )
+        #     for user, profile in rows
+        # ]
+
+        return await paginate(
+            db=db,
+            stmt=repo.get_pending_verifications_stmt(),
+            pk_col=User.id,
+            page=page,
+            page_size=page_size,
+            transformer=transform,
+        )
 
     @staticmethod
     async def get_analytics(db: AsyncSession) -> AdminAnalyticsResponse:
@@ -85,12 +120,14 @@ class AdminService:
     @staticmethod
     async def handle_verification(
         provider_id: UUID,
+        current_admin_id: UUID,
         data: VerificationActionSchema,
         db: AsyncSession,
         lang: str,
     ) -> VerificationActionResponse:
         admin_repo = AdminRepository(db)
         provider_repo = ProviderRepository(db)
+        super_repo = SuperAdminRepository(db)
 
         provider_profile = await provider_repo.get_by_id(provider_id)
 
@@ -99,24 +136,69 @@ class AdminService:
 
         try:
             if data.verification_status == VerificationStatus.APPROVED:
-                updated_provider_profile = await admin_repo.approve_verification(provider_profile)
+                updated_provider_profile = await admin_repo.approve_verification(
+                    provider_profile
+                )
 
                 logger.info(
                     f"Admin approved verification for provider {provider_id}")
-                # TODO: send FCM to provider — "Your account is now verified!"
             else:
                 if not data.rejection_reason:
                     raise DomainValidationError(
                         t("rejection_reason_required", lang))
 
-                updated_provider_profile = await admin_repo.reject_verification(provider_profile=provider_profile, reason=data.rejection_reason)
+                updated_provider_profile = await admin_repo.reject_verification(
+                    provider_profile=provider_profile, reason=data.rejection_reason
+                )
                 logger.info(
                     f"Admin rejected verification for provider {provider_id}: "
                     f"{data.rejection_reason}"
                 )
-                # TODO: send FCM to provider — "Your verification was rejected: {reason}"
 
             await db.commit()
+
+            # Fetch provider's FCM token and language preference
+            from app.models.fcm_token import FCMToken
+            from sqlalchemy import select
+
+            token_result = await db.execute(
+                select(FCMToken.token, User.preferred_lang)
+                .join(User, FCMToken.user_id == User.id)
+                .where(FCMToken.user_id == provider_id)
+                .limit(1)
+            )
+            token_row = token_result.first()
+            if token_row:
+                if data.verification_status == VerificationStatus.APPROVED:
+                    await NotificationService.send_verification_approved(
+                        provider_fcm_token=token_row.token,
+                        preferred_lang=token_row.preferred_lang or "bn",
+                    )
+                else:
+                    await NotificationService.send_verification_rejected(
+                        provider_fcm_token=token_row.token,
+                        preferred_lang=token_row.preferred_lang or "bn",
+                        reason=data.rejection_reason,
+                    )
+
+            verification_actions = {
+                VerificationStatus.APPROVED: "approved_verification",
+                VerificationStatus.REJECTED: "rejected_verification",
+                VerificationStatus.NOT_INITIATED: "verification_not_initiated",
+                VerificationStatus.PENDING: "pending_verification",
+            }
+
+            await super_repo.write_audit_log(
+                admin_id=current_admin_id,  # pass this through from the router
+                admin_role="admin",
+                action=verification_actions[data.verification_status],
+                target_user_id=provider_id,
+                details=(
+                    data.rejection_reason
+                    if data.verification_status == VerificationStatus.REJECTED
+                    else None
+                ),
+            )
 
             return VerificationActionResponse(
                 user_id=provider_id,
@@ -143,21 +225,20 @@ class AdminService:
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
                 logger.warning(
-                    f"FK violation in provider verification update by admin: {raw}")
-                raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
+                    f"FK violation in provider verification update by admin: {raw}"
                 )
+                raise DomainValidationError(
+                    error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(
-                    f"Unique violation in provider verification update by admin: {raw}")
-                raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
+                    f"Unique violation in provider verification update by admin: {raw}"
                 )
+                raise DomainIntegrityError(
+                    error_message=readable, raw_error=raw)
 
             logger.error(
-                f"IntegrityError in provider verification update by admin: {raw}")
+                f"IntegrityError in provider verification update by admin: {raw}"
+            )
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
         except (DomainIntegrityError, DomainValidationError):
             # let domain exceptions bubble up untouched to the global handler
@@ -165,19 +246,24 @@ class AdminService:
         except Exception as e:
             await db.rollback()
             logger.error(
-                f"Unexpected error in provider verification update by admin: {e}")
+                f"Unexpected error in provider verification update by admin: {e}"
+            )
             raise
 
     @staticmethod
     async def get_reports(
         db: AsyncSession,
+        page: int = 1,
+        page_size: int = 20,
         # lang: str,
         status_filter: str | None = None,
-    ) -> list[ReportListItem]:
+    ) -> PageResponse[ReportListItem]:
         repo = AdminRepository(db)
-        rows = await repo.get_reports(status_filter)
-        return [
-            ReportListItem(
+
+        def transform(row):
+            report, reporter, reported = row
+
+            return ReportListItem(
                 report_id=report.id,
                 reporter_name=reporter.name_en,
                 reported_user_name=reported.name_en,
@@ -187,17 +273,42 @@ class AdminService:
                 booking_id=report.booking_id,
                 created_at=report.created_at,
             )
-            for report, reporter, reported in rows
-        ]
+
+        # for non-paginated results
+        # rows = await repo.get_reports(status_filter)
+        # return [
+        #     ReportListItem(
+        #         report_id=report.id,
+        #         reporter_name=reporter.name_en,
+        #         reported_user_name=reported.name_en,
+        #         reported_user_role=reported.role.value,
+        #         reason=report.reason,
+        #         status=report.status.value,
+        #         booking_id=report.booking_id,
+        #         created_at=report.created_at,
+        #     )
+        #     for report, reporter, reported in rows
+        # ]
+
+        return await paginate(
+            db=db,
+            stmt=repo.get_reports_stmt(status_filter),
+            pk_col=UserReport.id,
+            page=page,
+            page_size=page_size,
+            transformer=transform,
+        )
 
     @staticmethod
     async def handle_report(
         report_id: UUID,
+        current_admin_id: UUID,
         data: ReportActionSchema,
         db: AsyncSession,
         lang: str,
     ) -> ReportActionResponse:
         admin_repo = AdminRepository(db)
+        super_repo = SuperAdminRepository(db)
 
         report = await admin_repo.get_report_by_id(report_id)
         if not report:
@@ -224,10 +335,25 @@ class AdminService:
             if report.status != ReportStatus.PENDING:
                 raise DomainValidationError("can_not_set_under_investigation")
             logger.info(
-                f"Admin marked report {report_id} as under investigation"
-            )
+                f"Admin marked report {report_id} as under investigation")
 
         await admin_repo.update_report_status(report, data.status)
+
+        report_actions = {
+            ReportStatus.REVIEWED: "reviewed_report",
+            ReportStatus.PENDING: "pending_report",
+            ReportStatus.UNDER_INVESTIGATION: "under_investigation",
+            ReportStatus.ACTION_TAKEN: "action_taken",
+        }
+
+        await super_repo.write_audit_log(
+            admin_id=current_admin_id,  # pass this through from the router
+            admin_role="admin",
+            action=(report_actions[data.status]),
+            target_user_id=report.reported_user_id,
+            details=data.admin_internal_notes,
+        )
+
         await db.commit()
 
         return ReportActionResponse(
@@ -239,24 +365,50 @@ class AdminService:
     @staticmethod
     async def get_users(
         db: AsyncSession,
-        role_filter: str | None = None,
+        page: int = 1,
+        page_size: int = 20,
+        role_filter: Role | None = None,
         is_active_filter: bool | None = None,
-    ) -> list[AdminUserListItem]:
+    ) -> PageResponse[AdminUserListItem]:
         repo = AdminRepository(db)
-        users = await repo.get_users(role_filter, is_active_filter)
-        return [
-            AdminUserListItem(
-                user_id=u.id,
-                name_en=u.name_en,
-                name_bn=u.name_bn,
-                phone=u.phone_en,
-                role=u.role,
-                is_active=u.is_active,
-                last_active_at=u.last_active_at,
-                created_at=u.created_at,
+
+        def transform(row):
+            # Single model query → row IS the User object directly, not a tuple
+            return AdminUserListItem(
+                user_id=row.id,
+                name_en=row.name_en,
+                name_bn=row.name_bn,
+                phone=row.phone_en,
+                role=row.role.value,
+                is_active=row.is_active,
+                last_active_at=row.last_active_at,
+                created_at=row.created_at,
             )
-            for u in users
-        ]
+
+        # These are for non-paginated results
+        # users = await repo.get_users(role_filter, is_active_filter)
+        # return [
+        #     AdminUserListItem(
+        #         user_id=u.id,
+        #         name_en=u.name_en,
+        #         name_bn=u.name_bn,
+        #         phone=u.phone_en,
+        #         role=u.role,
+        #         is_active=u.is_active,
+        #         last_active_at=u.last_active_at,
+        #         created_at=u.created_at,
+        #     )
+        #     for u in users
+        # ]
+
+        return await paginate(
+            db=db,
+            stmt=repo.get_users_stmt(role_filter, is_active_filter),
+            pk_col=User.id,
+            page=page,
+            page_size=page_size,
+            transformer=transform,
+        )
 
     @staticmethod
     async def get_user_detail(
@@ -295,21 +447,32 @@ class AdminService:
         )
 
     @staticmethod
-    async def toggle_user_active(
-        user_id: UUID, db: AsyncSession, lang: str
-    ) -> dict:
+    async def toggle_user_active(user_id: UUID, db: AsyncSession, lang: str) -> dict:
         repo = AdminRepository(db)
-        user = await repo.toggle_user_active(user_id)
+
+        # First check if user is a super_admin — regular admins cannot touch them
+        user = await db.get(User, user_id)
+
         if not user:
             raise DomainValidationError(t("user_not_found", lang))
-        await db.commit()
-        logger.info(
-            f"Admin toggled user {user_id} is_active → {user.is_active}"
-        )
+
+        if user.role == Role.SUPER_ADMIN:
+            raise DomainValidationError(
+                t("admin_only", lang))  # 400 — access denied
+
+        toggled = await repo.toggle_user_active(user_id)
+
+        if toggled is None:
+            raise DomainValidationError(t("user_not_found", lang))
 
         UserCacheService.invalidate(str(user_id))
+
+        await db.commit()
+        logger.info(
+            f"Admin toggled user {user_id} is_active → {user.is_active}")
+
         return {
             "user_id": user_id,
-            "is_active": user.is_active,
+            "is_active": toggled.is_active,
             "message": t("user_status_updated", lang),
         }

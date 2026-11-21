@@ -1,5 +1,5 @@
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import or_, select
 from app.models.fcm_token import FCMToken
 from app.models.user_model import User
 from app.models.user_session_model import UserSession
@@ -27,12 +27,25 @@ class UserRepository(BaseRepository[User]):
         )
         # no flush needed — will be committed by the calling service
 
-    async def delete_session_by_refresh_token(self, refresh_token: str) -> bool:
+    async def delete_session_by_refresh_token(
+        self,
+        refresh_token: str,
+        # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+        raw_refresh_token: str | None = None,
+    ) -> bool:
         """Deletes the session row matching this refresh token. Returns True if found."""
         from sqlalchemy import delete
+        # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+        token_values = [UserSession.refresh_token == refresh_token]
+        if raw_refresh_token is not None:
+            token_values.append(
+                UserSession.refresh_token == raw_refresh_token
+            )
         result = await self.db.execute(
             delete(UserSession)
-            .where(UserSession.refresh_token == refresh_token)
+            # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+            # .where(UserSession.refresh_token == refresh_token)
+            .where(or_(*token_values))
             .returning(UserSession.id)
         )
         return result.first() is not None

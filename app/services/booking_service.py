@@ -10,17 +10,25 @@ from app.core.paginator import paginate
 from app.models.booking_model import Booking, BookingStatus
 from app.models.provider_profile_model import ProviderProfile
 from app.repositories.booking_repository import BookingRepository
+from app.repositories.review_repository import ReviewRepository
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.booking_schema import BookingDetailsForLastInitiatedActiveBooking, BookingInitiateSchema, BookingRespondFromNotificationSchema, BookingInitiateResponse, BookingListItem, LastInitiatedActiveBookingSchema, SingleBookingDetailResponse
+from app.schemas.booking_schema import (
+    BookingDetailsForLastInitiatedActiveBooking,
+    BookingInitiateSchema,
+    BookingRespondFromNotificationSchema,
+    BookingInitiateResponse,
+    BookingListItem,
+    LastInitiatedActiveBookingSchema,
+    SingleBookingDetailResponse,
+)
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.schemas.pagination_schema import PageResponse
 
-
 # Business rule: max 10 open (INITIATED) booking at a time per seeker
-MAX_OPEN_BOOKINGS = 1          # max simultaneous unlocked numbers
-FOLLOWUP_DELAY_HOURS = 2        # FCM fires after this many hours
+MAX_OPEN_BOOKINGS = 1  # max simultaneous unlocked numbers
+FOLLOWUP_DELAY_HOURS = 2  # FCM fires after this many hours
 
 
 class BookingService:
@@ -32,7 +40,7 @@ class BookingService:
         lang: str,
     ) -> BookingInitiateResponse:
         """
-        Seeker clicks "Request to Call" on a provider's profile. 
+        Seeker clicks "Request to Call" on a provider's profile.
         This creates a new booking record and returns the phone number of the provider so the frontend can trigger the native dialer.
         """
 
@@ -57,8 +65,7 @@ class BookingService:
 
         # skill_id must be assigned to provider
         is_provider_skilled = await skill_repo.check_if_provider_has_skill(
-            skill_id=data.skill_id,
-            provider_id=data.provider_id
+            skill_id=data.skill_id, provider_id=data.provider_id
         )
 
         if not is_provider_skilled:
@@ -78,9 +85,10 @@ class BookingService:
 
             logger.success(
                 f"Booking initiated: {booking.id} by seeker {seeker_id}")
-
-            # TODO: 4. Schedule the FCM follow-up notification (stub — implement with APScheduler)
-            # NotificationService.schedule_booking_followup(booking.id, delay_hours=2)
+            logger.info(
+                f"Booking {booking.id} initiated — "
+                f"APScheduler will send followup FCM in ~2 hours"
+            )
 
             # Dynamically select the localized name variant
             localized_name = provider.name_bn if lang == "bn" else provider.name_en
@@ -109,19 +117,13 @@ class BookingService:
 
             # unwrap the original asyncpg exception to route correctly
             if is_fk:
-                logger.warning(
-                    f"FK violation in initiate booking: {raw}")
+                logger.warning(f"FK violation in initiate booking: {raw}")
                 raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
             if is_unique:
-                logger.warning(
-                    f"Unique violation in initiate booking: {raw}")
+                logger.warning(f"Unique violation in initiate booking: {raw}")
                 raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
 
             logger.error(f"IntegrityError in initiate booking: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
@@ -145,13 +147,17 @@ class BookingService:
 
         booking_repo = BookingRepository(db)
         user_repo = UserRepository(db)
+        review_repo = ReviewRepository(db)
 
         booking = await booking_repo.get_single_booking(booking_id)
         if not booking:
             raise DomainValidationError(t("booking_not_found", lang))
 
         # Only the seeker or provider of this booking can view it
-        if booking.seeker_id != current_user_id and booking.provider_id != current_user_id:
+        if (
+            booking.seeker_id != current_user_id
+            and booking.provider_id != current_user_id
+        ):
             raise DomainValidationError(t("booking_not_yours", lang))
 
         is_seeker = booking.seeker_id == current_user_id
@@ -161,12 +167,26 @@ class BookingService:
         else:
             other = await user_repo.get_by_id(booking.seeker_id)
 
+        if not other:
+            raise DomainValidationError(t("user_not_found", lang))
+
         # Extract job location coordinates from PostGIS point
         lat, lng = None, None
         if booking.job_location is not None:
             point = cast(Point, to_shape(booking.job_location))
             lng = point.x
             lat = point.y
+
+        # check if the current user submitted a review for this booking
+        reviews = await review_repo.get_existing_review(
+            booking_id=booking.id,
+            reviewer_id=current_user_id,
+        )
+
+        if reviews is not None:
+            is_reviewed = True
+        else:
+            is_reviewed = False
 
         return SingleBookingDetailResponse(
             booking_id=booking.id,
@@ -178,12 +198,16 @@ class BookingService:
             work_schedule=booking.work_schedule,
             completed_at=booking.completed_at,
             other_party_name=(
-                other.name_bn if lang == "bn" and other else other.name_en) if other else "-",
+                (other.name_bn if lang == "bn" and other else other.name_en)
+                if other
+                else "-"
+            ),
             # Phone visible to seeker always (they unlocked it).
             # Provider sees seeker phone only when IN_PROGRESS (they need to go there).
             other_party_phone=other.phone_en if other else None,
             job_latitude=lat,
-            job_longitude=lng,
+            job_longitude=lng, has_reviewed=is_reviewed,
+            other_party_id=other.id,
         )
 
     @staticmethod
@@ -246,7 +270,8 @@ class BookingService:
             else:
                 # booking.status = BookingStatus.CANCELLED
                 logger.info(
-                    f"Booking manually {booking_id} → CANCELLED by seeker {seeker_id}")
+                    f"Booking manually {booking_id} → CANCELLED by seeker {seeker_id}"
+                )
 
             await db.commit()
 
@@ -275,16 +300,12 @@ class BookingService:
                 logger.warning(
                     f"FK violation in booking status update(FCM): {raw}")
                 raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(
                     f"Unique violation in booking status update(FCM): {raw}")
                 raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
 
             logger.error(
                 f"IntegrityError in booking status update(FCM): {raw}")
@@ -304,7 +325,7 @@ class BookingService:
         db: AsyncSession,
         lang: str,
         page: int = 1,
-        page_size: int = 20
+        page_size: int = 20,
     ) -> PageResponse[BookingListItem]:
         """Provider's 'Incoming Bookings' tab — only IN_PROGRESS bookings will be shown."""
         booking_repo = BookingRepository(db)
@@ -317,15 +338,14 @@ class BookingService:
                 status=booking.status,
                 skill_id=booking.skill_id,
                 skill_name=(
-                    booking.skill.name_bn if lang == "bn"
-                    else booking.skill.name_en
+                    booking.skill.name_bn if lang == "bn" else booking.skill.name_en
                 ),
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
-                other_party_name=(
-                    seeker.name_bn if lang == "bn" else seeker.name_en
-                ),
+                other_party_name=(seeker.name_bn if lang ==
+                                  "bn" else seeker.name_en),
                 other_party_phone=seeker.phone_en,
+                other_party_id=seeker.id,
             )
 
         return await paginate(
@@ -363,32 +383,37 @@ class BookingService:
     ) -> list[BookingListItem]:
         """Provider's 'Completed Bookings/Jobs tab — only COMPLETED bookings will be shown with options to give review."""
         booking_repo = BookingRepository(db)
-        bookings_with_seekers = await booking_repo.get_provider_completed_with_seekers(provider_id)
+        bookings_with_seekers = await booking_repo.get_provider_completed_with_seekers(
+            provider_id
+        )
 
         result = []
         logger.info(
             f"completed bookings with seekers: {bookings_with_seekers}")
         for booking, seeker in bookings_with_seekers:
             localized_name = seeker.name_bn if lang == "bn" else seeker.name_en
-            localized_skill_name = booking.skill.name_bn if lang == "bn" else booking.skill.name_en
-            logger.success(dict(result))
-            result.append(BookingListItem(
-                booking_id=booking.id,
-                status=booking.status,
-                skill_id=booking.skill_id,
-                skill_name=localized_skill_name,
-                created_at=booking.created_at,
-                work_schedule=booking.work_schedule,
-                other_party_name=localized_name,
-                other_party_phone=seeker.phone_en,
-            ))
+            localized_skill_name = (
+                booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+            )
+            # logger.success(dict(result))
+            result.append(
+                BookingListItem(
+                    booking_id=booking.id,
+                    status=booking.status,
+                    skill_id=booking.skill_id,
+                    skill_name=localized_skill_name,
+                    created_at=booking.created_at,
+                    work_schedule=booking.work_schedule,
+                    other_party_name=localized_name,
+                    other_party_phone=seeker.phone_en,
+                    other_party_id=seeker.id,
+                )
+            )
         return result
 
     @staticmethod
     async def get_seeker_last_active_initiated(
-        seeker_id: UUID,
-        db: AsyncSession,
-        lang: str
+        seeker_id: UUID, db: AsyncSession, lang: str
     ) -> LastInitiatedActiveBookingSchema:
         booking_repo = BookingRepository(db)
         user_repo = UserRepository(db)
@@ -396,35 +421,33 @@ class BookingService:
         booking = await booking_repo.get_active_initiated_booking(seeker_id=seeker_id)
 
         if not booking:
-            return LastInitiatedActiveBookingSchema(has_active_booking=False, booking=None)
+            return LastInitiatedActiveBookingSchema(
+                has_active_booking=False, booking=None
+            )
 
         provider = await user_repo.get_by_id(id=booking.provider_id)
 
         if not provider:
-            return LastInitiatedActiveBookingSchema(has_active_booking=False, booking=None)
+            return LastInitiatedActiveBookingSchema(
+                has_active_booking=False, booking=None
+            )
 
         localized_name = provider.name_bn if lang == "bn" else provider.name_en
 
-        return (
-            LastInitiatedActiveBookingSchema(
-                has_active_booking=True,
-                booking=BookingDetailsForLastInitiatedActiveBooking(
-                    booking_id=booking.id,
-                    provider_name=localized_name,
-                    provider_phone=provider.phone_en,
-                    created_at=booking.created_at,
-                    status=booking.status
-                )
-            )
+        return LastInitiatedActiveBookingSchema(
+            has_active_booking=True,
+            booking=BookingDetailsForLastInitiatedActiveBooking(
+                booking_id=booking.id,
+                provider_name=localized_name,
+                provider_phone=provider.phone_en,
+                created_at=booking.created_at,
+                status=booking.status,
+            ),
         )
 
     @staticmethod
     async def get_seeker_history(
-        seeker_id: UUID,
-        db: AsyncSession,
-        lang: str,
-        page: int = 1,
-        page_size: int = 20
+        seeker_id: UUID, db: AsyncSession, lang: str, page: int = 1, page_size: int = 20
     ) -> PageResponse[BookingListItem]:
         """Seeker's full booking history including INITIATED entries."""
         booking_repo = BookingRepository(db)
@@ -437,11 +460,14 @@ class BookingService:
                 booking_id=booking.id,
                 status=booking.status,
                 skill_id=booking.skill_id,
-                skill_name=booking.skill.name_bn if lang == "bn" else booking.skill.name_en,
+                skill_name=(
+                    booking.skill.name_bn if lang == "bn" else booking.skill.name_en
+                ),
                 created_at=booking.created_at,
                 work_schedule=booking.work_schedule,
                 other_party_name=provider.name_bn if lang == "bn" else provider.name_en,
                 other_party_phone=provider.phone_en,
+                other_party_id=provider.id,
             )
 
         # result = []
@@ -467,7 +493,7 @@ class BookingService:
             pk_col=Booking.id,
             transformer=transform,
             page_size=page_size,
-            page=page
+            page=page,
         )
 
     @staticmethod

@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.models.fcm_token import FCMToken
@@ -47,7 +47,7 @@ class UrgentBroadcastRepository:
         await self.db.flush()
         return broadcast
 
-    async def get_nearby_fcm_tokens_to_create_urgent_broadcast_notification(
+    async def get_nearby_fcm_tokens(
         self,
         latitude: float,
         longitude: float,
@@ -253,3 +253,20 @@ class UrgentBroadcastRepository:
             "seconds_remaining": seconds_remaining,
             # "claimed_at": None,  # add claimed_at column to model if needed
         }
+
+    async def cancel_broadcast(
+        self,
+        broadcast_id: UUID,
+        seeker_id: UUID,
+    ) -> bool:
+        result = await self.db.execute(
+            update(UrgentBroadcast)
+            .where(
+                UrgentBroadcast.id == broadcast_id,
+                UrgentBroadcast.seeker_id == seeker_id,
+                UrgentBroadcast.status == BroadcastStatus.BROADCASTING,
+            )
+            .values(status=BroadcastStatus.EXPIRED)
+            .returning(UrgentBroadcast.id)
+        )
+        return result.scalar_one_or_none() is not None

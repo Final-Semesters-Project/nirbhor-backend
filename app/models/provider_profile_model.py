@@ -1,7 +1,16 @@
 from datetime import datetime
 import uuid
 from geoalchemy2 import Geometry
-from sqlalchemy import Boolean, DateTime, Enum as sqlEnum, Float, ForeignKey, Integer, String, func
+from sqlalchemy import (
+    Boolean,
+    DateTime,
+    Enum as sqlEnum,
+    Float,
+    ForeignKey,
+    Integer,
+    String,
+    func,
+)
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from app.db.base import Base
 import enum
@@ -16,7 +25,9 @@ class VerificationLevel(str, enum.Enum):
 
 class VerificationStatus(str, enum.Enum):
     NOT_INITIATED = "not_initiated"
-    PENDING = "pending"  # set automatically when provider uploads nid and Profile Picture
+    PENDING = (
+        "pending"  # set automatically when provider uploads nid and Profile Picture
+    )
     APPROVED = "approved"  # set manually by admin
     REJECTED = "rejected"  # set manually by admin with reason
 
@@ -56,11 +67,11 @@ class ProviderProfile(TimestampMixin, Base):
             name="verification_level",
             native_enum=False,  # to auto generate enum in alembic versions
             # values_callable is used to store the string values eg: "admin" instead of the Enum ADMIN in DB
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
         nullable=False,
         default=VerificationLevel.BASIC,
-        server_default=VerificationLevel.BASIC.value
+        server_default=VerificationLevel.BASIC.value,
     )
 
     verification_status: Mapped[VerificationStatus] = mapped_column(
@@ -69,15 +80,16 @@ class ProviderProfile(TimestampMixin, Base):
             name="verification_status",
             native_enum=False,  # to auto generate enum in alembic versions
             # values_callable is used to store the string values eg: "admin" instead of the Enum ADMIN in DB
-            values_callable=lambda x: [e.value for e in x]
+            values_callable=lambda x: [e.value for e in x],
         ),
         nullable=False,
         default=VerificationStatus.NOT_INITIATED,
-        server_default=VerificationStatus.NOT_INITIATED.value
+        server_default=VerificationStatus.NOT_INITIATED.value,
     )
 
     verification_rejection_reason: Mapped[str | None] = mapped_column(
-        String, nullable=True)
+        String, nullable=True
+    )
 
     # PostGIS point — stores (longitude, latitude)
     base_location: Mapped[object] = mapped_column(
@@ -85,16 +97,18 @@ class ProviderProfile(TimestampMixin, Base):
         nullable=False,
     )
 
+    base_address: Mapped[str | None] = mapped_column(
+        String(255), server_default="", nullable=False
+    )
+
     location_updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False
+        DateTime(timezone=True), nullable=False
     )
 
     working_radius_km: Mapped[int] = mapped_column(Integer, nullable=False)
 
     radius_updated_at: Mapped[datetime] = mapped_column(
-        DateTime(timezone=True),
-        nullable=False
+        DateTime(timezone=True), nullable=False
     )
 
     has_smartphone: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -103,7 +117,13 @@ class ProviderProfile(TimestampMixin, Base):
         Boolean, default=True, nullable=False)
 
     average_rating: Mapped[float | None] = mapped_column(
-        Float, nullable=True, default=None)
+        Float, nullable=True, default=None
+    )
+
+    cost_range_min: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_range_max: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    cost_sample_count: Mapped[int] = mapped_column(
+        Integer, nullable=False, default=0, server_default="0")
 
     warning_status: Mapped[bool] = mapped_column(
         Boolean, default=False, nullable=False)

@@ -5,6 +5,7 @@ from loguru import logger
 from sqlalchemy import func
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
+from app.core.cache import UserCacheService
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
@@ -13,6 +14,7 @@ from app.models.user_model import User
 from app.repositories.provider_repository import ProviderRepository
 from app.repositories.provider_skill_link_repository import ProviderSkillLinkRepository
 from fastapi import HTTPException, status
+from app.repositories.user_repository import UserRepository
 from app.schemas.provider_schema import AddNewSkillSchema, ProviderDashboardSchema, ProviderProfileUpdateSchema, PublicProviderProfile, SkillInfo
 from app.core.cloudinary_helpers import delete_image_from_cloudinary
 
@@ -40,7 +42,7 @@ class ProviderService:
         current_user: User,
         db: AsyncSession,
         lang: str
-    ):
+    ) -> ProviderDashboardSchema:
         # Dynamically select the localized name variant
         localized_name = current_user.name_bn if lang == "bn" else current_user.name_en
 
@@ -89,6 +91,7 @@ class ProviderService:
         update_data: ProviderProfileUpdateSchema
     ) -> dict:
         provider_repo = ProviderRepository(db)
+        user_repo = UserRepository(db)
 
         # fetch the existing provider data
         provider_instance = await provider_repo.get_by_id(provider_id)
@@ -102,18 +105,42 @@ class ProviderService:
         # Use exclude_unset=True for PATCH-style partial updates
         data_dict = update_data.model_dump(exclude_unset=True)
 
-        # handle location logic and update the data_dict
-        if "latitude" in data_dict and "longitude" in data_dict:
+        # Pop all three up front. Explicit nulls are ignored, so a client
+        # can never clear base_address or bypass the lock by sending null.
+        lat = data_dict.pop("latitude", None)
+        lng = data_dict.pop("longitude", None)
+        address = data_dict.pop("base_address", None)
+
+        if lat is not None or lng is not None or address is not None:
+            # any one of them present means "this is a location change"
+            if lat is None or lng is None or address is None:
+                raise DomainValidationError(
+                    t("location_fields_together", lang))
+
             days_difference = (datetime.now(timezone.utc) -
                                provider_instance.location_updated_at).days
-
             if days_difference < 7:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=t("location_update_limit", lang),
                 )
-            data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
+
+            data_dict["base_location"] = f"POINT({lng} {lat})"
+            data_dict["base_address"] = address
             data_dict["location_updated_at"] = func.now()
+
+        # handle location logic and update the data_dict
+        # if "latitude" in data_dict and "longitude" in data_dict:
+        #     days_difference = (datetime.now(timezone.utc) -
+        #                        provider_instance.location_updated_at).days
+
+        #     if days_difference < 7:
+        #         raise HTTPException(
+        #             status_code=status.HTTP_400_BAD_REQUEST,
+        #             detail=t("location_update_limit", lang),
+        #         )
+        #     data_dict["base_location"] = f"POINT({data_dict["longitude"]} {data_dict["latitude"]})"
+        #     data_dict["location_updated_at"] = func.now()
 
         if "working_radius_km" in data_dict:
             days_difference = (datetime.now(timezone.utc) -
@@ -167,6 +194,29 @@ class ProviderService:
         await ProviderService._delete_old_image_if_changed(data_dict, "nid_back_public_id", provider_instance.nid_back_public_id)
 
         try:
+            # Extract and REMOVE the name fields from data_dict using pop
+            name_en = data_dict.pop("name_en", None)
+            name_bn = data_dict.pop("name_bn", None)
+
+            # Build the user update dictionary only if names were provided
+            user_data = {}
+            if name_en is not None:
+                user_data["name_en"] = name_en
+            if name_bn is not None:
+                user_data["name_bn"] = name_bn
+
+            # 3. Update the User table if needed
+            if user_data:
+                user_instance = await user_repo.get_by_id(provider_id)
+                if user_instance is None:
+                    raise HTTPException(
+                        status_code=status.HTTP_404_NOT_FOUND,
+                        detail=t("user_not_found", lang),
+                    )
+                updated_user = await user_repo.update(instance=user_instance, **user_data)
+                # update the cached user
+                UserCacheService.set(str(updated_user.id), updated_user)
+
             updated_provider = await provider_repo.update(instance=provider_instance, **data_dict)
 
            # ── Verification status auto-transition ─────────────────────────────────

@@ -8,9 +8,16 @@ from app.core.i18n import t
 from app.core.integrity_error_parser import parse_integrity_error
 from app.models.fcm_token import FCMToken
 from app.repositories.provider_repository import ProviderRepository
+from app.repositories.seeker_repository import SeekerRepository
 from app.repositories.user_repository import UserRepository
 from app.repositories.user_session_repository import UserSessionRepository
-from app.schemas.auth_schema import AuthResponseSchema, LogoutSchema, ProviderRegisterSchema, SeekerRegisterSchema
+from app.schemas.auth_schema import (
+    AuthResponseSchema,
+    LogoutSchema,
+    ProviderRegisterSchema,
+    RefreshTokenSchema,
+    SeekerRegisterSchema,
+)
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.core.security import Security
 from app.models.user_model import Role
@@ -40,7 +47,7 @@ class AuthService:
         )
 
         # create refresh token
-        refresh_token = Security.create_refresh_token(
+        raw_refresh_token = Security.create_refresh_token(
             subject=str(user_id),
         )
 
@@ -52,7 +59,7 @@ class AuthService:
         session_repo = UserSessionRepository(db)
         await session_repo.create(
             user_id=user_id,
-            refresh_token=refresh_token,
+            refresh_token=Security.hash_token(raw_refresh_token),
             device_info=device_info,
             expires_at=expires_at,
         )
@@ -60,22 +67,93 @@ class AuthService:
         # set refresh token as HttpOnly cookie for browser
         response.set_cookie(
             key="refresh_token",
-            value=refresh_token,
+            value=raw_refresh_token,
             httponly=True,
             secure=True,
             # samesite="lax" breaks cross-origin cookie sending from frontend to backend if deployed in separate platforms. eg: Vercel -> Render
             samesite="none",
-            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60
+            max_age=settings.REFRESH_TOKEN_EXPIRE_MINUTES * 60,
         )
 
         # return tokens
         return AuthResponseSchema(
             access_token=access_token,
-            refresh_token=refresh_token,
+            refresh_token=raw_refresh_token,
             token_type="bearer",
             role=role,
             user_id=user_id,
         )
+
+    @staticmethod
+    async def refresh_tokens(
+        raw_refresh_token: str,
+        response: Response,
+        db: AsyncSession,
+        lang: str,
+        device_info: str | None = None,
+    ) -> AuthResponseSchema:
+        payload = Security.decode_refresh_token(raw_refresh_token)
+        if payload is None or payload.get("sub") is None:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("invalid_refresh_token", lang),
+            )
+
+        try:
+            user_id = UUID(payload["sub"])
+        except (KeyError, TypeError, ValueError):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("invalid_refresh_token", lang),
+            )
+
+        session_repo = UserSessionRepository(db)
+        hashed_refresh_token = Security.hash_token(raw_refresh_token)
+        session = await session_repo.get_by_refresh_token(hashed_refresh_token)
+
+        # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+        legacy_session = False
+        if session is None:
+            session = await session_repo.get_by_refresh_token(raw_refresh_token)
+            if session is not None:
+                legacy_session = True
+
+        if (
+            session is None
+            or session.user_id != user_id
+            or session.expires_at <= datetime.now(timezone.utc)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("refresh_token_expired_or_invalid", lang),
+            )
+
+        user_repo = UserRepository(db)
+        user = await user_repo.get_by_id(user_id)
+        if user is None or not user.is_active:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail=t("account_suspended", lang),
+            )
+
+        # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+        # await session_repo.delete_by_refresh_token(hashed_refresh_token)
+        if legacy_session:
+            await db.delete(session)
+        else:
+            await session_repo.delete_by_refresh_token(hashed_refresh_token)
+
+        result = await AuthService._create_tokens_and_session(
+            user_id=user.id,
+            role=user.role.value,
+            response=response,
+            db=db,
+            device_info=device_info,
+        )
+        await db.commit()
+        UserCacheService.set(str(user.id), user)
+
+        return result
 
     # ====== Register Seeker ===================================================
 
@@ -90,12 +168,12 @@ class AuthService:
 
         # re-validate with language context so error messages are translated
         data = SeekerRegisterSchema.model_validate(
-            data.model_dump(),
-            context={"lang": lang}
+            data.model_dump(), context={"lang": lang}
         )
 
         # Create an instance of UserRepository
         user_repo = UserRepository(db)
+        seeker_repo = SeekerRepository(db)
 
         # business rule: phone must be unique
         existing = await user_repo.get_by_phone(data.phone)
@@ -112,6 +190,14 @@ class AuthService:
                 role=Role.SEEKER,
                 name_en=data.name_en,
                 name_bn=data.name_bn,
+            )
+
+            # create provider profile
+            await seeker_repo.create_profile(
+                user_id=user.id,
+                latitude=data.home_latitude,
+                longitude=data.home_longitude,
+                home_address=data.home_address,
             )
 
             # create and store tokens
@@ -142,16 +228,12 @@ class AuthService:
             if isinstance(e.orig, ForeignKeyViolationError):
                 logger.warning(f"FK violation in seeker registration: {raw}")
                 raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
             if isinstance(e.orig, UniqueViolationError):
                 logger.warning(
                     f"Unique violation in seeker registration: {raw}")
                 raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
             logger.error(
                 f"Unhandled IntegrityError in seeker registration: {raw}")
             raise DomainIntegrityError(error_message=readable, raw_error=raw)
@@ -176,8 +258,7 @@ class AuthService:
 
         # re-validate with language context so error messages are translated
         data = ProviderRegisterSchema.model_validate(
-            data.model_dump(),
-            context={"lang": lang}
+            data.model_dump(), context={"lang": lang}
         )
 
         # Create an instance of UserRepository
@@ -207,15 +288,16 @@ class AuthService:
                 latitude=data.latitude,
                 longitude=data.longitude,
                 working_radius_km=data.working_radius_km,
-                user_id=user.id
+                user_id=user.id,
+                base_address=data.base_address,
             )
 
-            if (len(data.skill_ids) == 0):
+            if len(data.skill_ids) == 0:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail=t("skill_ids_required", lang),
                 )
-            
+
             await provider_repo.add_skills(user.id, data.skill_ids)
 
             # create and store tokens
@@ -256,16 +338,12 @@ class AuthService:
             if is_fk:
                 logger.warning(f"FK violation in provider registration: {raw}")
                 raise DomainValidationError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
             if is_unique:
                 logger.warning(
                     f"Unique violation in provider registration: {raw}")
                 raise DomainIntegrityError(
-                    error_message=readable,
-                    raw_error=raw
-                )
+                    error_message=readable, raw_error=raw)
 
             logger.error(
                 f"Unhandled IntegrityError in provider registration: {raw}")
@@ -302,7 +380,9 @@ class AuthService:
             )
 
         # 2. Verify password
-        is_valid_password = await Security.verify_password_async(password, user.password_hash)
+        is_valid_password = await Security.verify_password_async(
+            password, user.password_hash
+        )
         # if not Security.verify_password(password, user.password_hash):
         if not is_valid_password:
             raise HTTPException(
@@ -329,11 +409,17 @@ class AuthService:
             device_info=device_info,
         )
 
+        now = datetime.now(timezone.utc)
+
+        user.last_active_at = now
+
+        # update the last_active_at field
+        await user_repo.update_last_active(user.id, now)
+
         await db.commit()
         UserCacheService.set(str(result.user_id), user)
 
-        logger.success(
-            f"User logged in: {user.id} | role: {user.role.value}")
+        logger.success(f"User logged in: {user.id} | role: {user.role.value}")
 
         return result
 
@@ -350,11 +436,15 @@ class AuthService:
         from sqlalchemy.dialects.postgresql import insert
 
         # Upsert — avoid duplicates if same token registered twice
-        stmt = insert(FCMToken).values(
-            user_id=user_id,
-            token=token,
-            device_type=device_type,
-        ).on_conflict_do_nothing()
+        stmt = (
+            insert(FCMToken)
+            .values(
+                user_id=user_id,
+                token=token,
+                device_type=device_type,
+            )
+            .on_conflict_do_nothing()
+        )
 
         await db.execute(stmt)
         await db.commit()
@@ -372,10 +462,16 @@ class AuthService:
     ) -> dict:
         user_repo = UserRepository(db)
 
-        deleted = await user_repo.delete_session_by_refresh_token(data.refresh_token)
-        if not deleted:
-            logger.warning(
-                f"Logout: refresh token not found for user {user_id}")
+        if data.refresh_token:
+            hashed_refresh_token = Security.hash_token(data.refresh_token)
+            deleted = await user_repo.delete_session_by_refresh_token(
+                hashed_refresh_token,
+                # FIXME: temporary solution because legacy sessions stored in DB are not hashed
+                raw_refresh_token=data.refresh_token,
+            )
+            if not deleted:
+                logger.warning(
+                    f"Logout: refresh token not found for user {user_id}")
 
         payload = Security.decode_access_token(access_token)
 
@@ -385,7 +481,8 @@ class AuthService:
             )
             if remaining_seconds > 0:
                 TokenBlockListService.add(
-                    token=access_token, ttl_seconds=remaining_seconds)
+                    token=access_token, ttl_seconds=remaining_seconds
+                )
 
         UserCacheService.invalidate(str(user_id))
 

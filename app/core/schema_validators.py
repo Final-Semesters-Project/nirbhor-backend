@@ -7,7 +7,7 @@ from app.core.i18n import t
 
 
 def validate_phone(phone: str, info: ValidationInfo) -> str:
-    pattern = r'^01[3-9]\d{8}$'
+    pattern = r"^01[3-9]\d{8}$"
     if not re.match(pattern, phone):
         lang = info.context.get("lang", "en") if info.context else "en"
         logger.error(f"Invalid phone number schema check: {phone}")

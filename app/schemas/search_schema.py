@@ -17,10 +17,40 @@ class ProviderSearchResult(BaseModel):
     has_smartphone: bool
     is_available: bool
     last_active_at: datetime | None
+    cost_range_max: int | None
+    cost_range_min: int | None
 
 
 class ProviderSearchResponse(BaseModel):
     providers: list[ProviderSearchResult]
+    expanded_radius: bool
+    warning: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderSearchResponsePaginated(BaseModel):
+    items: list[ProviderSearchResult] = []  # ProviderSearchResult
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
+    expanded_radius: bool
+    warning: str | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderSearchNotFoundResponse(BaseModel):
+    items: list = []
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    has_next: bool
+    has_prev: bool
     expanded_radius: bool
     warning: str | None
 

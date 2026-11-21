@@ -1,0 +1,34 @@
+# Dockerfile.prod
+
+FROM python:3.12-slim
+
+# Production image differences from dev:
+# 1. No --reload (uvicorn runs with multiple workers instead)
+# 2. COPY . . (no volume mount — code is baked into the image)
+# 3. Non-root user for security
+# 4. No dev tools (tty, stdin_open, color env vars)
+# 5. entrypoint.sh still runs migrations before server starts
+
+WORKDIR /app
+
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    libpq-dev \
+    postgresql-client \
+    && rm -rf /var/lib/apt/lists/* \
+    && apt-get clean
+
+COPY requirements.txt .
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy all application code into the image
+# Unlike dev, there is no volume mount in production
+COPY . .
+
+# Copy and prepare entrypoint
+COPY entrypoint.prod.sh /entrypoint.prod.sh
+RUN chmod +x /entrypoint.prod.sh
+
+EXPOSE 8000
+
+CMD ["/entrypoint.prod.sh"]

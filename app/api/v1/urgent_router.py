@@ -1,7 +1,6 @@
-
 from uuid import UUID
-
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request, Response
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
@@ -9,7 +8,7 @@ from app.db.session import get_db_session
 from app.models.user_model import User
 from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
 from app.services.urgent_service import UrgentService
-
+from app.core.rate_limiter import limiter
 
 router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
 
@@ -19,7 +18,10 @@ router = APIRouter(prefix="/urgentBroadcast", tags=["Urgent Broadcasts"])
     response_model=UrgentBroadcastCreateResponse,
     status_code=201
 )
+@limiter.limit("3/minute")  # prevent broadcast spam
 async def create_urgent_broadcast(
+    request: Request,
+    response: Response,
     data: UrgentBroadcastCreateSchema,
     current_user: User = Depends(get_current_seeker),
     db: AsyncSession = Depends(get_db_session),
@@ -30,12 +32,15 @@ async def create_urgent_broadcast(
     Creates broadcast row + fires FCM to all nearby providers with smartphones.
     Expires in 5 minutes if no one claims.
     """
-    return await UrgentService.create_broadcast(
+    result = await UrgentService.create_broadcast(
         data=data,
         seeker_id=current_user.id,
         db=db,
         lang=lang,
     )
+    if result.status == "no_providers":
+        response.status_code = 200
+    return result
 
 
 @router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponseToProvider)
@@ -92,4 +97,22 @@ async def get_broadcast_status(
         broadcast_id=broadcast_id,
         db=db,
         lang=lang,
+    )
+
+
+@router.patch("/broadcast/{broadcast_id}/cancel", status_code=200)
+async def cancel_broadcast(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Seeker cancels an urgent broadcast by tapping 'Cancel'.
+    """
+    return await UrgentService.cancel_broadcast(
+        broadcast_id=broadcast_id,
+        db=db,
+        lang=lang,
+        current_user_id=current_user.id,
     )

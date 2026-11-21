@@ -1,13 +1,17 @@
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from app.core.config import settings
 from app.models.category_model import Category
 from app.models.provider_profile_model import ProviderProfile
 from app.models.provider_skill_link_model import ProviderSkillLink
+from app.models.seeker_profile_model import SeekerProfile
 from app.models.skill_model import Skill
 from loguru import logger
 from app.core.security import Security
 from app.models.user_model import Role, User
 from datetime import datetime, timedelta, timezone
+from geoalchemy2.shape import from_shape
+from shapely.geometry import Point
 
 
 async def seed_categories_and_skills(db: AsyncSession) -> None:
@@ -24,12 +28,16 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
             "name_en": "Manual Labor",
             "name_bn": "কায়িক শ্রম",
             "skills": [
-                {"name_en": "Day Laborer / Heavy Lifting",
-                    "name_bn": "দিনমজুর / ভারি কাজ"},
-                {"name_en": "Furniture Shifting Helper",
-                    "name_bn": "আসবাবপত্র স্থানান্তর"},
+                {
+                    "name_en": "Day Laborer / Heavy Lifting",
+                    "name_bn": "দিনমজুর / ভারি কাজ",
+                },
+                {
+                    "name_en": "Furniture Shifting Helper",
+                    "name_bn": "আসবাবপত্র স্থানান্তর",
+                },
                 {"name_en": "Warehouse Helper", "name_bn": "গুদামঘরের সহকারী"},
-            ]
+            ],
         },
         {
             "name_en": "Home Repairs",
@@ -40,7 +48,7 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
                 {"name_en": "AC Servicing Helper", "name_bn": "এসি সার্ভিসিং"},
                 {"name_en": "Appliance Repair",
                     "name_bn": "হোম অ্যাপ্লায়েন্স মেরামত"},
-            ]
+            ],
         },
         {
             "name_en": "Cleaning & Domestic",
@@ -49,7 +57,7 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
                 {"name_en": "Home Maid", "name_bn": "ছুটা বুয়া"},
                 {"name_en": "Deep Cleaning Helper", "name_bn": "ডিপ ক্লিনিং"},
                 {"name_en": "Painting Helper", "name_bn": "রংমিস্ত্রি সহকারী"},
-            ]
+            ],
         },
         {
             "name_en": "Transportation",
@@ -57,7 +65,7 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
             "skills": [
                 {"name_en": "Van Driver / 3-Wheeler", "name_bn": "ভ্যান চালক"},
                 {"name_en": "Small Pickup Driver", "name_bn": "পিকআপ চালক"},
-            ]
+            ],
         },
     ]
 
@@ -81,22 +89,62 @@ async def seed_categories_and_skills(db: AsyncSession) -> None:
     logger.success("✅ Seed data inserted successfully")
 
 
-async def create_admin_user(db: AsyncSession) -> None:
-    existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
-    if existing.scalar_one_or_none():
-        logger.info("Admin already seeded. Skipping...")
-        return
-    admin = User(
-        phone_en="01700000000",
-        password_hash=Security.hash_password("admin123"),
-        role=Role.ADMIN,
-        name_en="Admin",
-        name_bn="অ্যাডমিন",
-        is_active=True,
-    )
-    db.add(admin)
+async def create_admin_users(db: AsyncSession) -> None:
+    """
+    creates admin and super_admin
+    """
+    accounts = [
+        {
+            "phone": settings.ADMIN_PHONE,
+            "password": settings.ADMIN_PASSWORD.get_secret_value(),
+            "role": Role.ADMIN,
+            "name_en": "Admin 1",
+            "name_bn": "অ্যাডমিন ১",
+        },
+        {
+            "phone": settings.SUPER_ADMIN_PHONE,
+            "password": settings.SUPER_ADMIN_PASSWORD.get_secret_value(),
+            "role": Role.SUPER_ADMIN,
+            "name_en": "Super Admin",
+            "name_bn": "সুপার অ্যাডমিন",
+        },
+    ]
+
+    for account in accounts:
+        existing = await db.scalar(
+            select(User).where(User.phone_en == account["phone"])
+        )
+        if existing:
+            continue
+
+        user = User(
+            phone_en=account["phone"],
+            password_hash=Security.hash_password(account["password"]),
+            role=account["role"],
+            name_en=account["name_en"],
+            name_bn=account["name_bn"],
+            is_active=True,
+            preferred_lang="en",
+            created_at=datetime.now(timezone.utc),
+            last_active_at=datetime.now(timezone.utc),
+        )
+
+        db.add(user)
     await db.commit()
-    logger.success("✅ Admin user created successfully")
+    logger.success("✅ Admin & super admin created successfully from seed data")
+    # existing = await db.execute(select(User).where(User.phone_en == "01700000000"))
+    # if existing.scalar_one_or_none():
+    #     logger.info("Admin already seeded. Skipping...")
+    #     return
+    # admin = User(
+    #     phone_en=settings.ADMIN_PHONE,
+    #     password_hash=Security.hash_password(settings.ADMIN_PASSWORD.get_secret_value()),
+    #     role=Role.ADMIN,
+    #     name_bn="অ্যাডমিন",
+    #     name_en="Admin",
+    #     is_active=True,
+    # )
+    # db.add(admin)
 
 
 async def seed_load_test_seeker(db: AsyncSession) -> None:
@@ -127,9 +175,21 @@ async def seed_load_test_seeker(db: AsyncSession) -> None:
             last_active_at=datetime.now(timezone.utc),
             created_at=datetime.now(timezone.utc),
         )
-        seekers_to_add.append(seeker)
+        db.add(seeker)
+        await db.flush()
+        # seekers_to_add.append(seeker)
 
-    db.add_all(seekers_to_add)
+        profile = SeekerProfile(
+            user_id=seeker.id,
+            home_location=from_shape(
+                Point(90.3930 + (i * 0.001), 23.7510 + (i * 0.001)),
+                srid=4326,
+            ),
+            home_address=f"House {i}, Road 5, Dhanmondi, Dhaka",
+        )
+        db.add(profile)
+
+    # db.add_all(seekers_to_add)
 
     await db.commit()
     logger.success("✅ 10 Load test Seeker created successfully")
@@ -138,8 +198,6 @@ async def seed_load_test_seeker(db: AsyncSession) -> None:
 async def seed_load_test_provider(db: AsyncSession) -> None:
     """Creates test accounts for load testing. Run before locust."""
     from app.core.security import Security
-    from geoalchemy2.shape import from_shape
-    from shapely.geometry import Point
 
     # check if already seeded
     existing = await db.execute(select(User).where(User.phone_en == "01800000001"))
@@ -172,7 +230,9 @@ async def seed_load_test_provider(db: AsyncSession) -> None:
         profile = ProviderProfile(
             user_id=provider.id,
             base_location=from_shape(
-                Point(90.3950 + (i * 0.001), 23.7540 + (i * 0.001)), srid=4326),
+                Point(90.3950 + (i * 0.001), 23.7540 + (i * 0.001)), srid=4326
+            ),
+            base_address=f"House {i}, Road 10, Dhanmondi, Dhaka",
             location_updated_at=now - timedelta(days=20),
             working_radius_km=5,
             radius_updated_at=now - timedelta(days=20),

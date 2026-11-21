@@ -6,12 +6,12 @@ from app.schemas.pagination_schema import PageResponse
 
 async def paginate(
     db: AsyncSession,
-    stmt,           # your existing SELECT statement — no changes needed
+    stmt,  # your existing SELECT statement — no changes needed
     # The primary key column for counting (e.g. Booking.id). Used to build a clean COUNT subquery that strips. ORM options like selectinload which break COUNT(*)
     pk_col,
     page: int,
     page_size: int,
-    transformer=None,   # optional: function to transform each row
+    transformer=None,  # optional: function to transform each row
 ) -> PageResponse:
     """
     Generic offset paginator for any SQLAlchemy SELECT statement.
@@ -50,14 +50,19 @@ async def paginate(
     # Handle both:
     # - Single-model queries (select(Booking)) → use scalars()
     # - Multi-column/join queries (select(Booking, User)) → use all() for tuples
-    if stmt.is_select:
-        cols = stmt.selected_columns
-        # If more than one entity/column selected, result is tuples
-        use_tuples = len(list(cols)) > 1
-    else:
-        use_tuples = False
+    # if stmt.is_select:
+    #     cols = stmt.selected_columns
+    #     # If more than one entity/column selected, result is tuples
+    #     use_tuples = len(list(cols)) > 1
+    # else:
+    #     use_tuples = False
 
-    rows = result.all() if use_tuples else result.scalars().all()
+    # rows = result.all() if use_tuples else result.scalars().all()
+
+    entities = stmt.columns_clause_froms
+    use_scalars = len(entities) == 1
+
+    rows = result.scalars().all() if use_scalars else result.all()
 
     items = [transformer(row) for row in rows] if transformer else list(rows)
     total_pages = ceil(total / page_size) if total > 0 else 1

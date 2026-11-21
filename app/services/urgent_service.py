@@ -11,7 +11,7 @@ from app.models.urgent_broadcast_model import BroadcastStatus
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
 from app.services.notification_service import NotificationService
 
 
@@ -36,10 +36,24 @@ class UrgentService:
         if not skill_row:
             raise DomainValidationError(t("invalid_skill_ids", lang))
 
+        # 1. Eligibility check first. Nothing is inserted if nobody can be reached.
+        tokens = await urgent_repo.get_nearby_fcm_tokens(
+            latitude=data.latitude, longitude=data.longitude,
+            skill_id=data.skill_id, radius_km=3,
+        )
+
+        if not tokens:
+            logger.info(
+                f"Urgent request by {seeker_id}: no reachable providers, no broadcast created")
+            return UrgentBroadcastCreateResponse(
+                broadcast_id=None, status="no_providers", expires_at=None,
+                message=t("no_providers_nearby", lang),
+            )
+
         skill_name_en = skill_row.name_en
         skill_name_bn = skill_row.name_bn or skill_name_en
 
-        # 1. Create the broadcast row
+        # 2. Create the broadcast row if eligible
         broadcast = await urgent_repo.create_broadcast(
             seeker_id=seeker_id,
             skill_id=data.skill_id,
@@ -47,31 +61,19 @@ class UrgentService:
             longitude=data.longitude,
         )
 
-        # 2. Find nearby provider FCM tokens (within 3 KM, has_smartphone=True)
-        tokens = await urgent_repo.get_nearby_fcm_tokens_to_create_urgent_broadcast_notification(
-            latitude=data.latitude,
-            longitude=data.longitude,
-            skill_id=data.skill_id,
-            radius_km=3,
-        )
-
         await db.commit()
 
-        # 3. Fire FCM to all nearby providers simultaneously (stub)
-        if tokens:
-            logger.info(
-                f"Urgent broadcast {broadcast.id}: sending FCM to {len(tokens)} providers"
-            )
-            await NotificationService.send_urgent_broadcast_to_providers(
-                tokens=tokens,
-                broadcast_id=broadcast.id,
-                skill_name_en=skill_name_en,
-                skill_name_bn=skill_name_bn
-            )
-        else:
-            logger.warning(
-                f"Urgent broadcast {broadcast.id}: no nearby smartphone providers found"
-            )
+        # 3. Fire FCM to all nearby providers simultaneously
+
+        logger.info(
+            f"Urgent broadcast {broadcast.id}: sending FCM to {len(tokens)} providers"
+        )
+        await NotificationService.send_urgent_broadcast_to_providers(
+            tokens=tokens,
+            broadcast_id=broadcast.id,
+            skill_name_en=skill_name_en,
+            skill_name_bn=skill_name_bn
+        )
 
         return UrgentBroadcastCreateResponse(
             broadcast_id=broadcast.id,
@@ -220,3 +222,34 @@ class UrgentService:
         if not data:
             raise DomainValidationError(t("broadcast_not_found", lang))
         return BroadcastStatusResponseForSeeker(**data)
+
+    @staticmethod
+    async def cancel_broadcast(
+        broadcast_id: UUID,
+        db: AsyncSession,
+        lang: str,
+        current_user_id: UUID,
+    ):
+        urgent_repo = UrgentBroadcastRepository(db)
+
+        # check if broadcast exists and is BROADCASTING
+        broadcast = await urgent_repo.get_broadcast_by_id(broadcast_id)
+        if not broadcast or broadcast.status != BroadcastStatus.BROADCASTING:
+            raise DomainValidationError(t("broadcast_not_found", lang))
+
+        cancelled = await urgent_repo.cancel_broadcast(
+            broadcast_id=broadcast_id,
+            seeker_id=current_user_id,
+        )
+
+        if not cancelled:
+            await db.rollback()
+            raise DomainIntegrityError(t("broadcast_not_found", lang))
+
+        await db.commit()
+
+        return UrgentBroadcastCancelResponse(
+            broadcast_id=broadcast_id,
+            status=BroadcastStatus.EXPIRED,
+            message=t("broadcast_cancelled", lang),
+        )
