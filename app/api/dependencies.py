@@ -68,6 +68,8 @@ async def get_current_user(
                         last_active_at=now)
                 )
                 await db.commit()
+            # logger.success(
+            #     f"User returned from Cache in dependencies.py line 71: {user_id}")
             return cached_user
 
         # get the user from database if not in cache
@@ -89,7 +91,8 @@ async def get_current_user(
         UserCacheService.set(user_id, user)
 
         await _touch_last_active(user, db)
-
+        # logger.success(
+        #     f"User returned from DB in dependencies.py line 89: {user_id}")
         return user
     except HTTPException:
         raise

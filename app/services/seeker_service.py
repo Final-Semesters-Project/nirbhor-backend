@@ -107,13 +107,13 @@ class SeekerService:
         old_photo_public_id = seeker_instance.photo_public_id
 
         try:
-            user_updated = False
+
             if user_data:
                 updated_user = await user_repo.update(instance=user_instance, **user_data)
-                user_updated = True
+                UserCacheService.set(str(updated_user.id), updated_user)
             if profile_data:
                 updated_profile = await seeker_repo.update(instance=seeker_instance, **profile_data)
-                user_updated = True
+                # UserCacheService.set(str(updated_user.id), updated_user)
 
             await db.commit()
 
@@ -122,9 +122,6 @@ class SeekerService:
                 field_name="photo_public_id",
                 current_value=old_photo_public_id,
             )
-
-            if user_updated:
-                UserCacheService.set(str(user_instance.id), user_instance)
 
             return {
                 "message": t("profile_updated", lang)
