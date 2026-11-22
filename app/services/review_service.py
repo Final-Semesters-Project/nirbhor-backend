@@ -111,7 +111,7 @@ class ReviewService:
             review, seeker = row
 
             reviewer_name = (seeker.name_bn if lang == "bn" else seeker.name_en) if review.is_anonymous else (
-                "Anonymous" if lang == "bn" else "ছদ্মনামা")
+                "Anonymous" if lang == "en" else "অজ্ঞাতনামা")
             return reviewListItem(
                 comment=review.comment,
                 created_at=review.created_at,
