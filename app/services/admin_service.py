@@ -1,3 +1,5 @@
+import resource
+import time
 from typing import Literal
 from uuid import UUID
 from asyncpg import ForeignKeyViolationError, UniqueViolationError
@@ -37,7 +39,7 @@ class AdminService:
     # ================ Signed URL Generation for Cloudinary ================
 
     @staticmethod
-    def get_signed_nid_url(public_id: str | None, expires_in: int = 300) -> str | None:
+    def get_signed_nid_url(public_id: str | None) -> str | None:
         """
         Generates a signed URL valid for expires_in seconds (default 5 minutes).
         Returns None if public_id is None.
@@ -45,12 +47,15 @@ class AdminService:
         """
         if not public_id:
             return None
-        url, _ = cloudinary.utils.cloudinary_url(
+
+        url, _ = cloudinary.utils.private_download_url(
             public_id,
-            # FIXME: type was added because cloudinary assumes the image is public by default
             type="authenticated",
-            sign_url=True,
-            secure=True,
+            format="webp",
+            resource_type="image",
+            expires_at=int(time.time()) + 300,
+            # sign_url=True,
+            # secure=True,
             # expires_at is not directly supported in Python SDK this way
             # The URL is signed with the API secret — Cloudinary validates it
         )
