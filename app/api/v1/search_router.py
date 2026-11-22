@@ -33,8 +33,8 @@ async def search_providers(
     Auto-expands to 2km if no results found within requested radius.
     Phone numbers are never included in search results.
     """
-    logger.error("----------Ip address for current request---------: ",
-                 request.client.host if request.client else None)
+    logger.error(
+        f"----------Ip address for current request---------: {request.client.host if request.client else None}")
 
     return await SearchService.find_providers(
         db=db,

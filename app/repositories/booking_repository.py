@@ -141,7 +141,8 @@ class BookingRepository(BaseRepository[Booking]):
             # left join: include bookings where seeker has no FCM token
             .outerjoin(
                 FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) & (FCMToken.token.is_not(None)),
+                (FCMToken.user_id == Booking.seeker_id) & (
+                    FCMToken.token.is_not(None)),
             )
             .where(Booking.status == BookingStatus.INITIATED)
             .where(Booking.call_unlocked_at >= window_start)
@@ -323,6 +324,8 @@ class BookingRepository(BaseRepository[Booking]):
         SeekerUser = aliased(User, name="seeker_user")
         ProviderUser = aliased(User, name="provider_user")
 
+        # TODO: add a completion_prompt_sent_at column in table so that we don't send it every hour until the seeker taps it and mark it finished
+
         result = await self.db.execute(
             select(
                 Booking.id.label("booking_id"),
@@ -336,7 +339,8 @@ class BookingRepository(BaseRepository[Booking]):
             .join(ProviderUser, Booking.provider_id == ProviderUser.id)
             .outerjoin(
                 FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) & (FCMToken.token.is_not(None)),
+                (FCMToken.user_id == Booking.seeker_id) & (
+                    FCMToken.token.is_not(None)),
             )
             .where(Booking.status == BookingStatus.IN_PROGRESS)
             .where(Booking.work_schedule < now)
@@ -365,7 +369,8 @@ class BookingRepository(BaseRepository[Booking]):
         This prevents bookings from being stuck forever if the seeker never
         opens the app to manually mark completion.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(hours=grace_period_hours)
+        cutoff = datetime.now(timezone.utc) - \
+            timedelta(hours=grace_period_hours)
         result = await self.db.execute(
             update(Booking)
             .where(Booking.status == BookingStatus.IN_PROGRESS)

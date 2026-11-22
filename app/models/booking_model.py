@@ -95,6 +95,18 @@ class Booking(UUIDMixin, TimestampMixin, Base):
         nullable=True
     )
 
+    completion_prompt_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True
+    )
+
+    completion_prompt_sent_count: Mapped[int] = mapped_column(
+        Integer,
+        nullable=False,
+        default=0,
+        server_default="0"
+    )
+
     # cost
     final_cost: Mapped[float] = mapped_column(
         Integer,
