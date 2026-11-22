@@ -444,8 +444,10 @@ class AdminService:
             ai_review_summary_bn=profile.ai_review_summary_bn if profile else None,
             has_smartphone=profile.has_smartphone if profile else None,
             base_location=profile.base_location if profile else None,
-            nid_url_back=profile.nid_url_back if profile else None,
-            nid_url_front=profile.nid_url_front if profile else None,
+            nid_url_back=AdminService.get_signed_nid_url(
+                profile.nid_back_public_id) if profile.nid_back_public_id else None,
+            nid_url_front=AdminService.get_signed_nid_url(
+                profile.nid_front_public_id) if profile.nid_front_public_id else None,
             photo_url=profile.photo_url if profile else None,
             warning_status=profile.warning_status if profile else None,
             working_radius_km=profile.working_radius_km if profile else None,
