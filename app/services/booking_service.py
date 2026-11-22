@@ -51,7 +51,7 @@ class BookingService:
         # 1. Spam guard: seeker must not have another open booking
         open_count = await booking_repo.count_active_initiated(seeker_id)
         # changed max open bookings from 10 to 1
-        if open_count > MAX_OPEN_BOOKINGS:
+        if open_count >= MAX_OPEN_BOOKINGS:
             raise DomainIntegrityError(t("too_many_open_bookings", lang))
 
         # 2. Provider must exist and be available
