@@ -117,7 +117,6 @@ class Security:
 
             return payload
         except ExpiredSignatureError:
-            logger.error("Access Token Expired")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED, detail="Token expired",
                 headers={"WWW-Authenticate": "Bearer"},
