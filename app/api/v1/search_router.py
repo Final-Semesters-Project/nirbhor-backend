@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, Query, Request
+from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db.session import get_db_session
 from app.core.i18n import get_lang
@@ -32,6 +33,9 @@ async def search_providers(
     Auto-expands to 2km if no results found within requested radius.
     Phone numbers are never included in search results.
     """
+    print("----------Ip address for current request---------: ",
+          request.client.host if request.client else None)
+
     return await SearchService.find_providers(
         db=db,
         lang=lang,
