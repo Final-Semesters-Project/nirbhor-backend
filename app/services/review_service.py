@@ -49,7 +49,7 @@ class ReviewService:
         if existing:
             raise DomainIntegrityError(t("review_already_exists", lang))
 
-        can_post_anonymous = True if reviewer_role == Role.SEEKER else False
+        can_post_anonymous = data.is_anonymous if reviewer_role == Role.SEEKER else False
 
         # 5. Create review
         review = await review_repo.create_review(
