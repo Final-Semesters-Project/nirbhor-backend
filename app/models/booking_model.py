@@ -20,12 +20,6 @@ class BookingStatus(str, enum.Enum):
 class Booking(UUIDMixin, TimestampMixin, Base):
     __tablename__ = "bookings"
 
-    __table_args__ = (
-        # New constraint for final cost validation
-        CheckConstraint("final_cost IS NULL OR final_cost > 0",
-                        name="ck_booking_final_cost_positive"),
-    )
-
     seeker_id: Mapped[uuid.UUID] = mapped_column(
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
@@ -107,6 +101,11 @@ class Booking(UUIDMixin, TimestampMixin, Base):
         server_default="0"
     )
 
+    followup_sent_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True),
+        nullable=True,
+    )
+
     # cost
     final_cost: Mapped[float] = mapped_column(
         Integer,
@@ -137,6 +136,9 @@ class Booking(UUIDMixin, TimestampMixin, Base):
     )
 
     __table_args__ = (
+        # New constraint for final cost validation
+        CheckConstraint("final_cost IS NULL OR final_cost > 0",
+                        name="ck_booking_final_cost_positive"),
         Index("ix_bookings_seeker_id_created_at",
               "seeker_id", "created_at", "id"),
         Index("ix_bookings_provider_id_created_at",
