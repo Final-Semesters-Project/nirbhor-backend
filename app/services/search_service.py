@@ -6,7 +6,7 @@ from app.repositories.search_repository import SearchRepository
 from app.schemas.search_schema import ProviderSearchNotFoundResponse, ProviderSearchResponsePaginated, ProviderSearchResult, ProviderSearchResponse
 
 # If no results found within requested radius, auto-expand once to this
-AUTO_EXPAND_KM = 2
+AUTO_EXPAND_KM = 3
 
 
 class SearchService:
