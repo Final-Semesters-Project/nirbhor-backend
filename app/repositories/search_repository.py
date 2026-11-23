@@ -119,16 +119,11 @@ class SearchRepository:
         )
 
         # ── Composite ranking score ───────────────────────────────────────────
-        # func.nullif(distance_km, 0) returns NULL if distance_km is 0.
-        # Replace nullif(distance_km, 0) with greatest(distance_km, 0.1),
+        # nullif(distance_km, 0) with greatest(distance_km, 0.1),
         # This prevents division-by-zero when provider is at the exact same
-        # point as the seeker. NULL propagates through arithmetic so the
-        # whole score becomes NULL instead of crashing — and NULL rows sort
-        # last, which is acceptable (a provider at distance=0 is likely a
-        # test/bad data row anyway).
+        # point as the seeker.
         # Prevents division-by-zero AND prevents the whole score from becoming NULL
         ranking_score = (
-            # (1.0 / func.nullif(distance_km, 0))
             (1.0 / func.greatest(distance_km, 0.1))
             + (func.coalesce(ProviderProfile.average_rating, 0.0) * 2.0)
             + verification_score
@@ -165,6 +160,8 @@ class SearchRepository:
             User.last_active_at >= now - timedelta(days=60),
         ]
 
+        score_col = ranking_score.label("score")
+
         stmt = (
             select(
                 User.id.label("user_id"),
@@ -179,82 +176,28 @@ class SearchRepository:
                 ProviderProfile.cost_range_min,
                 ProviderProfile.cost_range_max,
                 distance_km.label("distance_km"),
-                ranking_score.label("score"),
+                score_col
             )
             .select_from(User)
             .join(ProviderProfile, User.id == ProviderProfile.user_id)
-            # .join(
-            #     ProviderSkillLink,
-            #     ProviderProfile.user_id == ProviderSkillLink.provider_id,
-            # )
             # ── Filters ───────────────────────────────────────────────────────
             .where(*filters)
-            # .where(ProviderSkillLink.skill_id == skill_id)
-            # .where(ProviderProfile.is_available == True)
-            # .where(User.is_active == True)
-            # provider working radius must overlap seeker location
-            # ST_DWithin uses the spatial index — fast.
-            # Checks if provider's base_location is within radius_m of seeker
-            # .where(
-            #     ST_DWithin(
-            #         ProviderProfile.base_location.cast(Geography),
-            #         seeker_point.cast(Geography),
-            #         radius_m,
-            #     )
-            # )
-            # checks if seekers location is within provider's working radius
-            # .where(
-            #     ST_DWithin(
-            #         ProviderProfile.base_location.cast(Geography),
-            #         seeker_point.cast(Geography),
-            #         ProviderProfile.working_radius_km * 1000,  # Provider's capacity
-            #     )
-            # )
-            # exclude 60+ day inactive providers entirely
-            # .where(User.last_active_at >= now - timedelta(days=60))
-            # ── distinct(User.id) ─────────────────────────────────────────────
-            # A provider can have multiple skills. Without distinct, a provider
-            # with 3 skills in the same category would appear 3 times in results.
-            # distinct(User.id) keeps only one row per provider.
-            # PostgreSQL requires the distinct column to appear first in ORDER BY,
-            # so we order by User.id first, then ranking_score.
-            # .distinct(User.id)
-            # .order_by(User.id, ranking_score.desc())
-            .order_by(ranking_score.desc().nulls_last(), User.id)
+            .order_by(score_col.desc().nulls_last(), User.id)
         )
 
         # Count total before pagination — same filters, just count
         count_stmt = (
-            # select(func.count(func.distinct(User.id)))
             select(func.count(User.id))
             .select_from(User)
             .join(ProviderProfile, User.id == ProviderProfile.user_id)
             .where(*filters)
-            # .join(ProviderSkillLink, ProviderProfile.user_id == ProviderSkillLink.provider_id)
-            # .where(ProviderSkillLink.skill_id == skill_id)
-            # .where(ProviderProfile.is_available == True)
-            # .where(User.is_active == True)
-            # .where(ST_DWithin(
-            #     ProviderProfile.base_location.cast(Geography),
-            #     seeker_point.cast(Geography),
-            #     radius_m,
-            # ))
-            # .where(ST_DWithin(
-            #     ProviderProfile.base_location.cast(Geography),
-            #     seeker_point.cast(Geography),
-            #     ProviderProfile.working_radius_km * 1000,
-            # ))
-            # .where(User.last_active_at >= now - timedelta(days=60))
         )
         total = await self.db.scalar(count_stmt) or 0
 
         # Add pagination to existing stmt
         paginated_stmt = stmt.limit(limit).offset(offset)
 
-        # result = await self.db.execute(stmt)
         result = await self.db.execute(paginated_stmt)
-        # return [dict(row._mapping) for row in result.all()]
-        # return result.all()
         rows = [
             ProviderSearchRow(**dict(row._mapping))
             for row in result.all()
@@ -271,6 +214,4 @@ class SearchRepository:
         name_col = Skill.name_bn if lang == "bn" else Skill.name_en
         result = await self.db.execute(select(name_col).where(Skill.id == skill_id))
         skill_name = result.scalar_one_or_none() or ""
-        # Every provider in results has this skill
-        # return {pid: [skill_name] for pid in provider_ids}
         return skill_name

@@ -51,7 +51,7 @@ class BookingService:
         # 1. Spam guard: seeker must not have another open booking
         open_count = await booking_repo.count_active_initiated(seeker_id)
         # changed max open bookings from 10 to 1
-        if open_count > MAX_OPEN_BOOKINGS:
+        if open_count >= MAX_OPEN_BOOKINGS:
             raise DomainIntegrityError(t("too_many_open_bookings", lang))
 
         # 2. Provider must exist and be available
@@ -103,6 +103,9 @@ class BookingService:
             await db.rollback()
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
+
+            if "uq_one_initiated_per_seeker" in raw:
+                raise DomainIntegrityError(t("too_many_open_bookings", lang))
 
             # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
             # the actual asyncpg exception — handle both cases

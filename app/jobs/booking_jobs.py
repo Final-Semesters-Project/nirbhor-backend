@@ -1,11 +1,6 @@
-
-from datetime import datetime, timedelta, timezone
 from loguru import logger
-from sqlalchemy import update
 from app.db.session import AsyncSessionLocal
-from app.models.booking_model import Booking, BookingStatus
 from app.repositories.booking_repository import BookingRepository
-from app.repositories.user_repository import UserRepository
 from app.services.notification_service import NotificationService
 
 
