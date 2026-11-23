@@ -13,6 +13,16 @@ from app.models.user_model import User
 from app.repositories.base_repository import BaseRepository
 
 
+FOLLOWUP_DELAY = timedelta(hours=2)
+# don't send "did you hire them?" for very old bookings
+FOLLOWUP_MAX_AGE = timedelta(hours=24)
+MAX_COMPLETION_PROMPTS = 2
+# 2nd prompt a day after the 1st
+COMPLETION_PROMPT_GAP = timedelta(hours=24)
+# raise it to wait after work_schedule starts
+COMPLETION_PROMPT_DELAY = timedelta(hours=0)
+
+
 @dataclass
 class BookingFollowupData:
     """
@@ -103,9 +113,33 @@ class BookingRepository(BaseRepository[Booking]):
         )
         return len(result.all())
 
+    async def _notification_rows(self, booking_ids: list[UUID]) -> list[BookingFollowupData]:
+        if not booking_ids:
+            return []
+        SeekerUser = aliased(User, name="seeker_user")
+        ProviderUser = aliased(User, name="provider_user")
+        result = await self.db.execute(
+            select(
+                Booking.id.label("booking_id"), Booking.seeker_id,
+                FCMToken.token.label("fcm_token"), SeekerUser.preferred_lang,
+                ProviderUser.name_en.label("provider_name_en"),
+                ProviderUser.name_bn.label("provider_name_bn"),
+            )
+            .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
+            .join(ProviderUser, Booking.provider_id == ProviderUser.id)
+            .outerjoin(FCMToken, (FCMToken.user_id == Booking.seeker_id) & FCMToken.token.is_not(None))
+            .where(Booking.id.in_(booking_ids))
+        )
+        return [BookingFollowupData(
+            booking_id=r.booking_id, seeker_id=r.seeker_id, fcm_token=r.fcm_token,
+            preferred_lang=r.preferred_lang or "bn",
+            provider_name_en=r.provider_name_en,
+            provider_name_bn=r.provider_name_bn or r.provider_name_en,
+        ) for r in result.all()]
+
     async def get_initiated_ready_for_followup(self) -> list[BookingFollowupData]:
         """
-        Finds INITIATED bookings in the 2hr±5min window AND joins seeker FCM token
+        Finds INITIATED bookings AND joins seeker FCM token
         and provider name in a single query.
 
         Why LEFT JOIN on FCMToken?
@@ -113,55 +147,66 @@ class BookingRepository(BaseRepository[Booking]):
         or token registration failed). LEFT JOIN includes them so we can log
         and skip rather than silently losing the booking from results.
 
-        Why the 5-minute window?
-        Job runs every 5 minutes. Window = [2hr5min ago, 2hr ago].
-        This ensures each booking is caught exactly once.
-        Edge case: if job is delayed/skipped, booking falls outside window.
-        Acceptable tradeoff for simplicity vs per-booking scheduling.
+        MARKS bookings as followed-up (followup_sent_at) and returns their notification data
         """
         now = datetime.now(timezone.utc)
-        window_start = now - timedelta(hours=2, minutes=5)
-        window_end = now - timedelta(hours=2)
+        # window_start = now - timedelta(hours=2, minutes=5)
+        # window_end = now - timedelta(hours=2)
 
         # Alias users table to separate structural roles clearly
-        SeekerUser = aliased(User, name="seeker_user")
-        ProviderUser = aliased(User, name="provider_user")
+        # SeekerUser = aliased(User, name="seeker_user")
+        # ProviderUser = aliased(User, name="provider_user")
 
-        result = await self.db.execute(
-            select(
-                Booking.id.label("booking_id"),
-                Booking.seeker_id,
-                FCMToken.token.label("fcm_token"),
-                SeekerUser.preferred_lang,
-                ProviderUser.name_en.label("provider_name_en"),
-                ProviderUser.name_bn.label("provider_name_bn"),
-            )
-            .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
-            .join(ProviderUser, Booking.provider_id == ProviderUser.id)
-            # left join: include bookings where seeker has no FCM token
-            .outerjoin(
-                FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) & (
-                    FCMToken.token.is_not(None)),
-            )
-            .where(Booking.status == BookingStatus.INITIATED)
-            .where(Booking.call_unlocked_at >= window_start)
-            .where(Booking.call_unlocked_at <= window_end)
+        stmt = (
+            update(Booking)
+            .where(Booking.status == BookingStatus.INITIATED,
+                   Booking.followup_sent_at.is_(None),
+                   Booking.call_unlocked_at <= now - FOLLOWUP_DELAY,
+                   Booking.call_unlocked_at >= now - FOLLOWUP_MAX_AGE)
+            .values(followup_sent_at=now)
+            .returning(Booking.id)
+            .execution_options(synchronize_session=False)
         )
 
-        rows = result.all()
+        # result = await self.db.execute(
+        #     select(
+        #         Booking.id.label("booking_id"),
+        #         Booking.seeker_id,
+        #         FCMToken.token.label("fcm_token"),
+        #         SeekerUser.preferred_lang,
+        #         ProviderUser.name_en.label("provider_name_en"),
+        #         ProviderUser.name_bn.label("provider_name_bn"),
+        #     )
+        #     .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
+        #     .join(ProviderUser, Booking.provider_id == ProviderUser.id)
+        #     # left join: include bookings where seeker has no FCM token
+        #     .outerjoin(
+        #         FCMToken,
+        #         (FCMToken.user_id == Booking.seeker_id) & (
+        #             FCMToken.token.is_not(None)),
+        #     )
+        #     .where(Booking.status == BookingStatus.INITIATED)
+        #     .where(Booking.call_unlocked_at >= window_start)
+        #     .where(Booking.call_unlocked_at <= window_end)
+        # )
 
-        return [
-            BookingFollowupData(
-                booking_id=row.booking_id,
-                seeker_id=row.seeker_id,
-                fcm_token=row.fcm_token,
-                preferred_lang=row.preferred_lang or "bn",
-                provider_name_en=row.provider_name_en,
-                provider_name_bn=row.provider_name_bn,
-            )
-            for row in rows
-        ]
+        # rows = result.all()
+
+        # return [
+        #     BookingFollowupData(
+        #         booking_id=row.booking_id,
+        #         seeker_id=row.seeker_id,
+        #         fcm_token=row.fcm_token,
+        #         preferred_lang=row.preferred_lang or "bn",
+        #         provider_name_en=row.provider_name_en,
+        #         provider_name_bn=row.provider_name_bn,
+        #     )
+        #     for row in rows
+        # ]
+        ids = list((await self.db.scalars(stmt)).all())
+        # the claim is final before any push goes out
+        await self.db.commit()
+        return await self._notification_rows(ids)
 
     async def get_by_id_with_parties(self, booking_id: UUID) -> Booking | None:
         """
@@ -316,49 +361,63 @@ class BookingRepository(BaseRepository[Booking]):
     async def get_in_progress_past_work_schedule(self) -> list[BookingFollowupData]:
         """
         Find IN_PROGRESS bookings where work_schedule has passed.
-        Used to send the completion prompt FCM:
-        'Your job with [Provider] should be done. Tap to review!'
+        MARKS bookings as prompted (count + time) and returns their notification data.
+        At most MAX_COMPLETION_PROMPTS pushes per booking, COMPLETION_PROMPT_GAP apart.
         """
         now = datetime.now(timezone.utc)
+        sent = func.coalesce(Booking.completion_prompt_sent_count, 0)
 
-        SeekerUser = aliased(User, name="seeker_user")
-        ProviderUser = aliased(User, name="provider_user")
-
-        # TODO: add a completion_prompt_sent_at column in table so that we don't send it every hour until the seeker taps it and mark it finished
-
-        result = await self.db.execute(
-            select(
-                Booking.id.label("booking_id"),
-                Booking.seeker_id,
-                FCMToken.token.label("fcm_token"),
-                SeekerUser.preferred_lang,
-                ProviderUser.name_en.label("provider_name_en"),
-                ProviderUser.name_bn.label("provider_name_bn"),
-            )
-            .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
-            .join(ProviderUser, Booking.provider_id == ProviderUser.id)
-            .outerjoin(
-                FCMToken,
-                (FCMToken.user_id == Booking.seeker_id) & (
-                    FCMToken.token.is_not(None)),
-            )
-            .where(Booking.status == BookingStatus.IN_PROGRESS)
-            .where(Booking.work_schedule < now)
-            .where(Booking.work_schedule.is_not(None))
+        stmt = (
+            update(Booking)
+            .where(Booking.status == BookingStatus.IN_PROGRESS,
+                   Booking.work_schedule.is_not(None),
+                   Booking.work_schedule <= now - COMPLETION_PROMPT_DELAY,
+                   sent < MAX_COMPLETION_PROMPTS,
+                   or_(Booking.completion_prompt_sent_at.is_(None),
+                       Booking.completion_prompt_sent_at <= now - COMPLETION_PROMPT_GAP))
+            .values(completion_prompt_sent_at=now, completion_prompt_sent_count=sent + 1)
+            .returning(Booking.id)
+            .execution_options(synchronize_session=False)
         )
+        # SeekerUser = aliased(User, name="seeker_user")
+        # ProviderUser = aliased(User, name="provider_user")
 
-        rows = result.all()
-        return [
-            BookingFollowupData(
-                booking_id=row.booking_id,
-                seeker_id=row.seeker_id,
-                fcm_token=row.fcm_token,
-                preferred_lang=row.preferred_lang or "bn",
-                provider_name_en=row.provider_name_en,
-                provider_name_bn=row.provider_name_bn or row.provider_name_en,
-            )
-            for row in rows
-        ]
+        # result = await self.db.execute(
+        #     select(
+        #         Booking.id.label("booking_id"),
+        #         Booking.seeker_id,
+        #         FCMToken.token.label("fcm_token"),
+        #         SeekerUser.preferred_lang,
+        #         ProviderUser.name_en.label("provider_name_en"),
+        #         ProviderUser.name_bn.label("provider_name_bn"),
+        #     )
+        #     .join(SeekerUser, Booking.seeker_id == SeekerUser.id)
+        #     .join(ProviderUser, Booking.provider_id == ProviderUser.id)
+        #     .outerjoin(
+        #         FCMToken,
+        #         (FCMToken.user_id == Booking.seeker_id) & (
+        #             FCMToken.token.is_not(None)),
+        #     )
+        #     .where(Booking.status == BookingStatus.IN_PROGRESS)
+        #     .where(Booking.work_schedule < now)
+        #     .where(Booking.work_schedule.is_not(None))
+        # )
+
+        # rows = result.all()
+        # return [
+        #     BookingFollowupData(
+        #         booking_id=row.booking_id,
+        #         seeker_id=row.seeker_id,
+        #         fcm_token=row.fcm_token,
+        #         preferred_lang=row.preferred_lang or "bn",
+        #         provider_name_en=row.provider_name_en,
+        #         provider_name_bn=row.provider_name_bn or row.provider_name_en,
+        #     )
+        #     for row in rows
+        # ]
+        ids = list((await self.db.scalars(stmt)).all())
+        await self.db.commit()
+        return await self._notification_rows(ids)
 
     async def auto_complete_stale_in_progress(
         self, grace_period_hours: int = 72

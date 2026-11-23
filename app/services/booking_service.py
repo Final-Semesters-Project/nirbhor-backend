@@ -104,6 +104,9 @@ class BookingService:
             raw = str(e.orig) if e.orig else str(e)
             readable = parse_integrity_error(raw, lang)
 
+            if "uq_one_initiated_per_seeker" in raw:
+                raise DomainIntegrityError(t("too_many_open_bookings", lang))
+
             # e.orig may be a string (SQLAlchemy asyncpg dialect behavior) or
             # the actual asyncpg exception — handle both cases
             is_fk = (

@@ -1,7 +1,7 @@
 from app.db.base import Base
 from app.models.mixins.timestamp_mixin import TimestampMixin
 from app.models.mixins.uuid_mixin import UUIDMixin
-from sqlalchemy import CheckConstraint, Float, Index, ForeignKey, Enum as sqlEnum, DateTime, Integer
+from sqlalchemy import CheckConstraint, Float, Index, ForeignKey, Enum as sqlEnum, DateTime, Integer, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 import uuid
 import enum
@@ -150,4 +150,6 @@ class Booking(UUIDMixin, TimestampMixin, Base):
             "status",
             postgresql_where=(status.in_(["initiated", "in_progress"]))
         ),
+        Index("uq_one_initiated_per_seeker", "seeker_id", unique=True,
+              postgresql_where=text("status = 'initiated'")),
     )

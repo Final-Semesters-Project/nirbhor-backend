@@ -46,7 +46,7 @@ async def lifespan(app: FastAPI):
     # send notifications to seekers for INITIATED bookings
     scheduler.add_job(
         send_booking_followup_notifications,
-        "interval", minutes=5, max_instances=1
+        "cron", minute="0, 30", max_instances=1, coalesce=True
     )
 
     # set the created broadcasts to EXPIRED if they're older than 5 minutes
@@ -58,7 +58,7 @@ async def lifespan(app: FastAPI):
     # send Seeker notifications to ask if the booking is complete
     scheduler.add_job(
         send_completion_prompts,
-        "interval", hours=1,  max_instances=1
+        "cron", minute="0, 30",  max_instances=1, coalesce=True
     )
 
     # expires the INITIATED bookings older than 48 hours
