@@ -38,16 +38,17 @@ async def update_password(
 ):
     return await UserService.update_password(data=data, current_user=current_user, db=db, lang=lang)
 
-# @router.patch(
-#     "/me/toggle_preferred_language",
-#     summary="Toggle preferred language",
-#     status_code=status.HTTP_200_OK,
-# )
-# async def toggle_preferred_language(
-#     data: PreferredLanguageToggleSchema,
-#     current_user: User = Depends(get_current_user),
-#     db: AsyncSession = Depends(get_db_session),
-#     lang: str = Depends(get_lang),
-# ):
-#     return await UserService.toggle_preferred_language(
-#         data=data, current_user=current_user, db=db, lang=lang)
+
+@router.patch(
+    "/me/toggle_preferred_language",
+    summary="Toggle preferred language",
+    status_code=status.HTTP_200_OK,
+)
+async def toggle_preferred_language(
+    data: PreferredLanguageToggleSchema,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    return await UserService.toggle_preferred_language(
+        data=data, current_user=current_user, db=db, lang=lang)
