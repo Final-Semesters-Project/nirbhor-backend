@@ -68,3 +68,42 @@ class UrgentBroadcastCancelResponse(BaseModel):
     broadcast_id: UUID
     status: BroadcastStatus
     message: str
+
+
+class SeekerUrgentBroadcastItem(BaseModel):
+    """One row of the seeker's urgent history. Provider phone only while CLAIMED."""
+    broadcast_id: UUID
+    status: BroadcastStatus
+    skill_id: int
+    skill_name: str
+    created_at: datetime
+    expires_at: datetime
+    # only while BROADCASTING, to restore the countdown
+    seconds_remaining: int | None
+    cancelled_at: datetime | None
+    provider_name: str | None          # None until someone claims
+    provider_phone: str | None         # only while the job is active (CLAIMED)
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderUrgentBroadcastItem(BaseModel):
+    """One row of the provider's accepted urgent jobs. Phone and location only while CLAIMED."""
+    broadcast_id: UUID
+    status: BroadcastStatus
+    skill_id: int
+    skill_name: str
+    created_at: datetime
+    cancelled_at: datetime | None
+    seeker_name: str
+    seeker_phone: str | None
+    seeker_latitude: float | None
+    seeker_longitude: float | None
+
+    model_config = ConfigDict(from_attributes=True)
+
+
+class ProviderCancelBroadcastResponse(BaseModel):
+    broadcast_id: UUID
+    status: BroadcastStatus
+    message: str

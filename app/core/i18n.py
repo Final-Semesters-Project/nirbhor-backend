@@ -108,8 +108,12 @@ MESSAGES = {
         "no_providers_nearby": "No one is available nearby right now. Please try a manual search.",
         "final_cost_seeker_only": "Final cost can only be set by the Seeker.",
         "broadcast_cancelled": "This urgent broadcast is cancelled.",
+        "broadcast_cancel_not_allowed": "Only a job you have accepted can be cancelled.",
+        "broadcast_cancelled_by_provider": "You have cancelled this urgent job.",
     },
     "bn": {
+        "broadcast_cancel_not_allowed": "শুধু আপনার গ্রহণ করা কাজই বাতিল করা যায়।",
+        "broadcast_cancelled_by_provider": "আপনি এই জরুরি কাজটি বাতিল করেছেন।",
         "broadcast_cancelled": "এই আর্জেন্ট ব্রেডক্যাস্টটি বাতিল করা হয়েছে।",
         "final_cost_seeker_only": "চূড়ান্ত খরচ শুধু সেবাপ্রার্থী দিতে পারবেন।",
         "no_providers_nearby": "এই মুহূর্তে কাছাকাছি কেউ পাওয়া যায়নি। অনুগ্রহ করে ম্যানুয়াল অনুসন্ধান করুন।",

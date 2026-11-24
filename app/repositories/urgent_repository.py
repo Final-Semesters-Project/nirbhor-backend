@@ -1,7 +1,7 @@
 from dataclasses import dataclass
 from datetime import datetime, timezone, timedelta
 from uuid import UUID
-from sqlalchemy import select, update
+from sqlalchemy import func, select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
 from app.models.fcm_token import FCMToken
@@ -146,8 +146,9 @@ class UrgentBroadcastRepository:
                 ProviderUser.name_en.label("provider_name_en"),
                 ProviderUser.name_bn.label("provider_name_bn"),
             )
+            .select_from(SeekerUser)
             # Get seeker user row
-            .join(SeekerUser,   SeekerUser.id == seeker_id)
+            # .join(SeekerUser,   SeekerUser.id == seeker_id)
             # Get provider user row
             .join(ProviderUser, ProviderUser.id == provider_id)
             # LEFT JOIN FCMToken — seeker might not have a token registered
@@ -156,7 +157,6 @@ class UrgentBroadcastRepository:
                 (FCMToken.user_id == seeker_id) & FCMToken.token.is_not(None)
             )
             # Use a literal select_from so SQLAlchemy has a base table
-            .select_from(SeekerUser)
         )
 
         row = result.first()
@@ -174,7 +174,7 @@ class UrgentBroadcastRepository:
         """Fetch a broadcast for the detail view."""
         result = await self.db.execute(
             select(UrgentBroadcast).where(UrgentBroadcast.id == broadcast_id).where(
-                UrgentBroadcast.status != BroadcastStatus.EXPIRED)
+                UrgentBroadcast.status != BroadcastStatus.EXPIRED).where(UrgentBroadcast.status.notin_([BroadcastStatus.EXPIRED, BroadcastStatus.CANCELLED]))
         )
         return result.scalar_one_or_none()
 
@@ -270,3 +270,83 @@ class UrgentBroadcastRepository:
             .returning(UrgentBroadcast.id)
         )
         return result.scalar_one_or_none() is not None
+
+    def _skill_name_col(self, lang: str):
+        return Skill.name_bn if lang == "bn" else Skill.name_en
+
+    def get_seeker_broadcasts_stmt(
+        self, seeker_id: UUID, lang: str,
+        status: BroadcastStatus | None = None,
+        active_only: bool = False
+    ):
+        ClaimedProvider = aliased(User, name="claimed_provider")
+        provider_name = (func.coalesce(ClaimedProvider.name_bn, ClaimedProvider.name_en)
+                         if lang == "bn" else ClaimedProvider.name_en)
+        stmt = (
+            select(
+                UrgentBroadcast,
+                self._skill_name_col(lang).label("skill_name"),
+                provider_name.label("provider_name"),
+                ClaimedProvider.phone_en.label("provider_phone"),
+            )
+            .join(Skill, Skill.id == UrgentBroadcast.skill_id)
+            .outerjoin(ClaimedProvider, ClaimedProvider.id == UrgentBroadcast.claimed_by_provider_id)
+            .where(UrgentBroadcast.seeker_id == seeker_id)
+            .order_by(UrgentBroadcast.created_at.desc(), UrgentBroadcast.id.desc())
+        )
+        if active_only:
+            stmt = stmt.where(UrgentBroadcast.status.in_(
+                [BroadcastStatus.BROADCASTING, BroadcastStatus.CLAIMED]))
+        elif status:
+            stmt = stmt.where(UrgentBroadcast.status == status)
+        return stmt
+
+    def get_provider_broadcasts_stmt(
+        self, provider_id: UUID, lang: str,
+        status: BroadcastStatus | None = None,
+        active_only: bool = False
+    ):
+        SeekerUser = aliased(User, name="seeker_user")
+        seeker_name = (func.coalesce(SeekerUser.name_bn, SeekerUser.name_en)
+                       if lang == "bn" else SeekerUser.name_en)
+        stmt = (
+            select(
+                UrgentBroadcast,
+                self._skill_name_col(lang).label("skill_name"),
+                seeker_name.label("seeker_name"),
+                SeekerUser.phone_en.label("seeker_phone"),
+            )
+            .join(Skill, Skill.id == UrgentBroadcast.skill_id)
+            .join(SeekerUser, SeekerUser.id == UrgentBroadcast.seeker_id)
+            .where(UrgentBroadcast.claimed_by_provider_id == provider_id)
+            .order_by(UrgentBroadcast.created_at.desc(), UrgentBroadcast.id.desc())
+        )
+        if active_only:
+            stmt = stmt.where(UrgentBroadcast.status ==
+                              BroadcastStatus.CLAIMED)
+        elif status:
+            stmt = stmt.where(UrgentBroadcast.status == status)
+        return stmt
+
+    async def cancel_claimed_broadcast_by_provider(
+        self, broadcast_id: UUID, provider_id: UUID,
+    ) -> tuple[UrgentBroadcast | None, bool]:
+        """
+        Locks the row (same pessimistic lock as claim). Cancels only if the broadcast
+        is CLAIMED by this provider. Returns (broadcast, changed).
+        None means not found or not this provider's job.
+        """
+        result = await self.db.execute(
+            select(UrgentBroadcast)
+            .where(UrgentBroadcast.id == broadcast_id)
+            .with_for_update()
+        )
+        broadcast = result.scalar_one_or_none()
+        if not broadcast or broadcast.claimed_by_provider_id != provider_id:
+            return None, False
+        if broadcast.status != BroadcastStatus.CLAIMED:
+            return broadcast, False
+        broadcast.status = BroadcastStatus.CANCELLED
+        broadcast.cancelled_at = datetime.now(timezone.utc)
+        await self.db.flush()
+        return broadcast, True

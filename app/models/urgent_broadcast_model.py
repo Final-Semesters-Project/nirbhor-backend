@@ -13,8 +13,7 @@ class BroadcastStatus(str, enum.Enum):
     BROADCASTING = "broadcasting"
     CLAIMED = "claimed"
     EXPIRED = "expired"
-
-# is fcm like a message broker? does it store notification messages? what if user is offline?
+    CANCELLED = "cancelled"
 
 
 class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
@@ -73,6 +72,9 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
         nullable=False,
     )
 
+    cancelled_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True)
+
     __table_args__ = (
         Index(
             "ix_urgent_broadcasts_status_expires",
@@ -80,4 +82,7 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
             # <-- Compiles to SQL WHERE status = 'BROADCASTING'
             postgresql_where=(status == "BROADCASTING")
         ),
+        Index("ix_urgent_broadcasts_seeker_created", "seeker_id", "created_at"),
+        Index("ix_urgent_broadcasts_claimed_by_created",
+              "claimed_by_provider_id", "created_at"),
     )
