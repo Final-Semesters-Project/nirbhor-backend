@@ -48,7 +48,7 @@ class AdminService:
         if not public_id:
             return None
 
-        url, _ = cloudinary.utils.private_download_url(
+        url = cloudinary.utils.private_download_url(
             public_id,
             type="authenticated",
             format="webp",
