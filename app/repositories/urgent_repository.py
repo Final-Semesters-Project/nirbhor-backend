@@ -266,7 +266,7 @@ class UrgentBroadcastRepository:
                 UrgentBroadcast.seeker_id == seeker_id,
                 UrgentBroadcast.status == BroadcastStatus.BROADCASTING,
             )
-            .values(status=BroadcastStatus.EXPIRED)
+            .values(status=BroadcastStatus.CANCELLED)
             .returning(UrgentBroadcast.id)
         )
         return result.scalar_one_or_none() is not None
