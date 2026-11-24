@@ -5,14 +5,18 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from loguru import logger
 from app.core.exceptions import DomainIntegrityError, DomainValidationError
+from app.core.geo import to_lat_lng
 from app.core.i18n import t
+from app.core.paginator import paginate
 from app.models.skill_model import Skill
-from app.models.urgent_broadcast_model import BroadcastStatus
+from app.models.urgent_broadcast_model import BroadcastStatus, UrgentBroadcast
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
+from app.schemas.pagination_schema import PageResponse
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
 from app.services.notification_service import NotificationService
+from geoalchemy2.shape import to_shape
 
 
 class UrgentService:
@@ -43,7 +47,7 @@ class UrgentService:
         )
 
         if not tokens:
-            logger.info(
+            logger.error(
                 f"Urgent request by {seeker_id}: no reachable providers, no broadcast created")
             return UrgentBroadcastCreateResponse(
                 broadcast_id=None, status="no_providers", expires_at=None,
@@ -60,6 +64,7 @@ class UrgentService:
             latitude=data.latitude,
             longitude=data.longitude,
         )
+        logger.success("Broadcast created")
 
         await db.commit()
 
@@ -72,7 +77,8 @@ class UrgentService:
             tokens=tokens,
             broadcast_id=broadcast.id,
             skill_name_en=skill_name_en,
-            skill_name_bn=skill_name_bn
+            skill_name_bn=skill_name_bn,
+            preferred_lang=lang,
         )
 
         return UrgentBroadcastCreateResponse(
@@ -144,7 +150,7 @@ class UrgentService:
         if not broadcast:
             raise DomainValidationError(t("broadcast_not_found", lang))
 
-        if broadcast.status == BroadcastStatus.EXPIRED:
+        if broadcast.status in (BroadcastStatus.EXPIRED, BroadcastStatus.CANCELLED):
             raise DomainValidationError(t("broadcast_not_found", lang))
 
         if broadcast.status == BroadcastStatus.CLAIMED:
@@ -253,3 +259,98 @@ class UrgentService:
             status=BroadcastStatus.EXPIRED,
             message=t("broadcast_cancelled", lang),
         )
+
+    @staticmethod
+    async def get_seeker_broadcasts(
+        seeker_id: UUID, db: AsyncSession, lang: str,
+        page: int = 1, page_size: int = 10,
+        status: BroadcastStatus | None = None, active_only: bool = False,
+    ) -> PageResponse[SeekerUrgentBroadcastItem]:
+        urgent_repo = UrgentBroadcastRepository(db)
+        now = datetime.now(timezone.utc)
+
+        def transform(row):
+            b, skill_name, provider_name, provider_phone = row
+            return SeekerUrgentBroadcastItem(
+                broadcast_id=b.id, status=b.status, skill_id=b.skill_id,
+                skill_name=skill_name or "", created_at=b.created_at, expires_at=b.expires_at,
+                seconds_remaining=(max(0, int((b.expires_at - now).total_seconds()))
+                                   if b.status == BroadcastStatus.BROADCASTING else None),
+                cancelled_at=b.cancelled_at, provider_name=provider_name,
+                provider_phone=provider_phone if b.status == BroadcastStatus.CLAIMED else None,
+            )
+
+        return await paginate(
+            db=db,
+            stmt=urgent_repo.get_seeker_broadcasts_stmt(
+                seeker_id, lang, status, active_only),
+            pk_col=UrgentBroadcast.id, page=page, page_size=page_size, transformer=transform,
+        )
+
+    @staticmethod
+    async def get_provider_broadcasts(
+        provider_id: UUID, db: AsyncSession, lang: str,
+        page: int = 1, page_size: int = 10,
+        status: BroadcastStatus | None = None, active_only: bool = False,
+    ) -> PageResponse[ProviderUrgentBroadcastItem]:
+        urgent_repo = UrgentBroadcastRepository(db)
+
+        def transform(row):
+            b, skill_name, seeker_name, seeker_phone = row
+            active = b.status == BroadcastStatus.CLAIMED
+            lat = lng = None
+            if active and b.location is not None:       # location shared only while the job is active
+                point = to_lat_lng(b.location)
+
+                lat, lng = point if point else (None, None)
+
+            return ProviderUrgentBroadcastItem(
+                broadcast_id=b.id, status=b.status, skill_id=b.skill_id,
+                skill_name=skill_name or "", created_at=b.created_at, cancelled_at=b.cancelled_at,
+                seeker_name=seeker_name or "", seeker_phone=seeker_phone if active else None,
+                seeker_latitude=lat, seeker_longitude=lng,
+            )
+
+        return await paginate(
+            db=db,
+            stmt=urgent_repo.get_provider_broadcasts_stmt(
+                provider_id, lang, status, active_only),
+            pk_col=UrgentBroadcast.id, page=page, page_size=page_size, transformer=transform,
+        )
+
+    @staticmethod
+    async def cancel_broadcast_by_provider(
+        broadcast_id: UUID, provider_id: UUID, db: AsyncSession, lang: str,
+    ) -> ProviderCancelBroadcastResponse:
+        """Provider releases an accepted job. Idempotent: a repeat call returns the same result."""
+        urgent_repo = UrgentBroadcastRepository(db)
+
+        broadcast, changed = await urgent_repo.cancel_claimed_broadcast_by_provider(
+            broadcast_id, provider_id)
+        if broadcast is None:                       # unknown id or not this provider's job
+            raise DomainValidationError(t("broadcast_not_found", lang))
+        if not changed and broadcast.status != BroadcastStatus.CANCELLED:
+            raise DomainValidationError(
+                t("broadcast_cancel_not_allowed", lang))
+
+        # the cancel is final before any push goes out
+        await db.commit()
+
+        if changed:
+            data = await urgent_repo.get_claim_notification_data(
+                seeker_id=broadcast.seeker_id, provider_id=provider_id)
+            if data and data.seeker_fcm_token:
+                await NotificationService.send_broadcast_cancelled_to_seeker(
+                    seeker_fcm_token=data.seeker_fcm_token,
+                    provider_name_en=data.provider_name_en,
+                    provider_name_bn=data.provider_name_bn,
+                    preferred_lang=data.seeker_preferred_lang,
+                    broadcast_id=broadcast.id,
+                )
+            else:
+                logger.warning(
+                    f"No FCM token for seeker {broadcast.seeker_id}; skipped cancel push")
+
+        return ProviderCancelBroadcastResponse(
+            broadcast_id=broadcast.id, status=broadcast.status,
+            message=t("broadcast_cancelled_by_provider", lang))

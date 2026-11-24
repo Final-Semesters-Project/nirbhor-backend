@@ -212,6 +212,35 @@ class NotificationService:
         logger.info(
             f"Broadcast for FCM token: {seeker_fcm_token} claimed by {provider_name_en}")
 
+    @staticmethod
+    async def send_broadcast_cancelled_to_seeker(
+        seeker_fcm_token: str,
+        provider_name_en: str,
+        provider_name_bn: str,
+        preferred_lang: str,
+        broadcast_id: UUID,
+    ) -> None:
+        """Tells the seeker their accepted urgent job was cancelled so they can request again."""
+        if not seeker_fcm_token:
+            return
+
+        title = "প্রোভাইডার জরুরী কাজ বাতিল করেছেন" if preferred_lang == "bn" else "Provider cancelled urgent job"
+        body = (f"{provider_name_bn} আসতে পারছেন না। অনুগ্রহ করে নতুন জরুরি অনুরোধ পাঠান।" if preferred_lang == "bn"
+                else f"{provider_name_en} can no longer come. Please send a new urgent request.")
+        await NotificationService._send(
+            message=messaging.Message(
+                token=seeker_fcm_token,
+                data={
+                    "type": "BROADCAST_CANCELLED_BY_PROVIDER",
+                    "broadcast_id": str(broadcast_id),
+                    "provider_name_en": provider_name_en,
+                    "provider_name_bn": provider_name_bn,
+                    "preferred_lang": preferred_lang,
+                },
+                notification=messaging.Notification(title=title, body=body),
+            ))
+        logger.info(f"Broadcast {broadcast_id}: provider-cancelled push sent")
+
     # ── Urgent broadcast (called from request handler) ────────────────────────
 
     @staticmethod
@@ -220,6 +249,7 @@ class NotificationService:
         broadcast_id: UUID,
         skill_name_en: str,
         skill_name_bn: str,
+        preferred_lang: str,
     ) -> None:
         """
         Send high-priority FCM to all nearby providers simultaneously.
@@ -228,6 +258,13 @@ class NotificationService:
         """
         if not tokens:
             return
+
+        title = "জরুরি কাজ!" if preferred_lang == "bn" else "Urgent Job!"
+        body = (
+            f"{skill_name_bn} দরকার। এখনই গ্রহণ করুন। "
+            if preferred_lang == "bn"
+            else f"{skill_name_en} is Needed urgently. Tap to accept."
+        )
 
         message = messaging.MulticastMessage(
             tokens=tokens,
@@ -238,11 +275,11 @@ class NotificationService:
                 "skill_name_bn": skill_name_bn,
             },
             notification=messaging.Notification(
-                title="জরুরি কাজ! / Urgent Job!",
+                title=title,
                 # For MulticastMessage we can't personalize per-token language
                 # Use Bangla as default since majority of providers are Bangla-speaking
                 # The data payload lets the app override this if needed
-                body=f"{skill_name_bn} / {skill_name_en} দরকার। এখনই গ্রহণ করুন। / Needed urgently. Tap to accept.",
+                body=body,
             ),
             android=messaging.AndroidConfig(priority="high"),
             apns=messaging.APNSConfig(

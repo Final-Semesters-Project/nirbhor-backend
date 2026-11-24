@@ -1,12 +1,14 @@
 from uuid import UUID
-from fastapi import APIRouter, Depends, Request, Response
+from fastapi import APIRouter, Depends, Query, Request, Response
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.api.dependencies import get_current_provider, get_current_seeker
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
+from app.models.urgent_broadcast_model import BroadcastStatus
 from app.models.user_model import User
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
+from app.schemas.pagination_schema import PageResponse
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
 from app.services.urgent_service import UrgentService
 from app.core.rate_limiter import limiter
 
@@ -41,6 +43,53 @@ async def create_urgent_broadcast(
     if result.status == "no_providers":
         response.status_code = 200
     return result
+
+
+@router.get("/seeker/broadcasts", response_model=PageResponse[SeekerUrgentBroadcastItem])
+async def get_my_urgent_broadcasts_as_seeker(
+    status_filter: BroadcastStatus | None = Query(None, alias="status"),
+    active_only: bool = Query(
+        False, description="Only broadcasting or claimed"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_seeker),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """All urgent broadcasts of this seeker (current, completed, cancelled, expired), newest first."""
+    return await UrgentService.get_seeker_broadcasts(
+        seeker_id=current_user.id, db=db, lang=lang, page=page, page_size=page_size,
+        status=status_filter, active_only=active_only)
+
+
+@router.get("/provider/broadcasts", response_model=PageResponse[ProviderUrgentBroadcastItem])
+async def get_my_urgent_broadcasts_as_provider(
+    status_filter: BroadcastStatus | None = Query(None, alias="status"),
+    active_only: bool = Query(
+        False, description="Only jobs currently claimed"),
+    page: int = Query(1, ge=1),
+    page_size: int = Query(10, ge=1, le=50),
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """All urgent jobs this provider accepted, newest first."""
+    return await UrgentService.get_provider_broadcasts(
+        provider_id=current_user.id, db=db, lang=lang, page=page, page_size=page_size,
+        status=status_filter, active_only=active_only)
+
+
+@router.patch("/broadcast/{broadcast_id}/provider-cancel",
+              response_model=ProviderCancelBroadcastResponse, status_code=200)
+async def cancel_broadcast_by_provider(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_provider),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """Provider releases an accepted urgent job. The seeker gets a push to request again."""
+    return await UrgentService.cancel_broadcast_by_provider(
+        broadcast_id=broadcast_id, provider_id=current_user.id, db=db, lang=lang)
 
 
 @router.post("/broadcast/{broadcast_id}/claim", status_code=200, response_model=ClaimedBroadcastResponseToProvider)
