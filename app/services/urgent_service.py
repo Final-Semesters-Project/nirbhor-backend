@@ -256,7 +256,7 @@ class UrgentService:
 
         return UrgentBroadcastCancelResponse(
             broadcast_id=broadcast_id,
-            status=BroadcastStatus.EXPIRED,
+            status=BroadcastStatus.CANCELLED,
             message=t("broadcast_cancelled", lang),
         )
 
