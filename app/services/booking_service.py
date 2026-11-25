@@ -26,7 +26,7 @@ from app.core.exceptions import DomainIntegrityError, DomainValidationError
 from app.core.i18n import t
 from app.schemas.pagination_schema import PageResponse
 
-# Business rule: max 10 open (INITIATED) booking at a time per seeker
+# Business rule: max 1 open (INITIATED) booking at a time per seeker
 MAX_OPEN_BOOKINGS = 1  # max simultaneous unlocked numbers
 FOLLOWUP_DELAY_HOURS = 2  # FCM fires after this many hours
 
