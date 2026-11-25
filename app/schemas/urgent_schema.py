@@ -107,3 +107,12 @@ class ProviderCancelBroadcastResponse(BaseModel):
     broadcast_id: UUID
     status: BroadcastStatus
     message: str
+
+
+class CompleteUrgentBroadcastResponse(BaseModel):
+    broadcast_id: UUID
+    status: BroadcastStatus
+    completed_at: datetime
+    message: str
+
+    model_config = ConfigDict(from_attributes=True)

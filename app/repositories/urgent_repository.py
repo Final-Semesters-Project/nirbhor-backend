@@ -24,6 +24,19 @@ class BroadcastClaimNotificationData:
     provider_name_bn: str
 
 
+@dataclass
+class BroadcastCompletedNotificationData:
+    """Everything needed to notify the seeker + Provider after a completion."""
+    seeker_fcm_token: str | None
+    provider_fcm_token: str | None
+    seeker_preferred_lang: str
+    provider_preferred_lang: str
+    provider_name_en: str
+    provider_name_bn: str
+    seeker_name_en: str
+    seeker_name_bn: str
+
+
 class UrgentBroadcastRepository:
     def __init__(self, db: AsyncSession):
         self.db = db
@@ -127,6 +140,48 @@ class UrgentBroadcastRepository:
 
         return broadcast
 
+    async def get_by_id_for_update(
+        self, broadcast_id: UUID
+    ) -> UrgentBroadcast | None:
+        result = await self.db.execute(
+            select(UrgentBroadcast)
+            .where(UrgentBroadcast.id == broadcast_id)
+            .with_for_update()
+        )
+        return result.scalar_one_or_none()
+
+    async def complete_a_broadcast(
+        self,
+        broadcast_id: UUID
+    ) -> tuple[UrgentBroadcast | None, bool]:
+        """
+        Atomic completion with pessimistic row lock (FOR UPDATE).
+        Returns (broadcast, just_completed):
+          - (None, False) if broadcast does not exist
+          - (broadcast, False) if status was not CLAIMED (already completed, cancelled, expired, or still broadcasting)
+          - (broadcast, True) if this transaction transitioned CLAIMED -> COMPLETED
+        """
+        # with_for_update() locks the row until this transaction commits
+        result = await self.db.execute(
+            select(UrgentBroadcast)
+            .where(UrgentBroadcast.id == broadcast_id)
+            .with_for_update()
+        )
+        broadcast = result.scalar_one_or_none()
+
+        if not broadcast:
+            return None, False
+
+        if broadcast.status != BroadcastStatus.CLAIMED:
+            return broadcast, False
+
+        broadcast.status = BroadcastStatus.COMPLETED
+        broadcast.completed_at = datetime.now(timezone.utc)
+
+        await self.db.flush()
+
+        return broadcast, True
+
     async def get_claim_notification_data(
         self,
         seeker_id: UUID,
@@ -168,6 +223,59 @@ class UrgentBroadcastRepository:
             seeker_preferred_lang=row.preferred_lang or "bn",
             provider_name_en=row.provider_name_en,
             provider_name_bn=row.provider_name_bn or row.provider_name_en,
+        )
+
+    async def get_completed_notification_data(
+        self,
+        seeker_id: UUID,
+        provider_id: UUID,
+    ) -> BroadcastCompletedNotificationData | None:
+        """
+        Fetch seeker + provider names, languages, and FCM tokens in one query
+        using distinct aliases for both users and both FCM token joins.
+        """
+        SeekerUser = aliased(User, name="seeker_user")
+        ProviderUser = aliased(User, name="provider_user")
+        SeekerFCM = aliased(FCMToken, name="seeker_fcm")
+        ProviderFCM = aliased(FCMToken, name="provider_fcm")
+
+        result = await self.db.execute(
+            select(
+                SeekerFCM.token.label("seeker_fcm_token"),
+                ProviderFCM.token.label("provider_fcm_token"),
+                SeekerUser.preferred_lang.label("seeker_preferred_lang"),
+                ProviderUser.preferred_lang.label("provider_preferred_lang"),
+                ProviderUser.name_en.label("provider_name_en"),
+                ProviderUser.name_bn.label("provider_name_bn"),
+                SeekerUser.name_en.label("seeker_name_en"),
+                SeekerUser.name_bn.label("seeker_name_bn"),
+            )
+            .select_from(SeekerUser)
+            # Get provider user row
+            .join(ProviderUser, ProviderUser.id == provider_id)
+            .outerjoin(
+                SeekerFCM,
+                (SeekerFCM.user_id == SeekerUser.id) & SeekerFCM.token.is_not(None)
+            )
+            .outerjoin(
+                ProviderFCM,
+                (ProviderFCM.user_id == ProviderUser.id) & ProviderFCM.token.is_not(None)
+            ).where(SeekerUser.id == seeker_id)
+        )
+
+        row = result.first()
+        if not row:
+            return None
+
+        return BroadcastCompletedNotificationData(
+            seeker_fcm_token=row.seeker_fcm_token,
+            provider_fcm_token=row.provider_fcm_token,
+            seeker_preferred_lang=row.seeker_preferred_lang or "bn",
+            provider_preferred_lang=row.provider_preferred_lang or "bn",
+            provider_name_en=row.provider_name_en,
+            provider_name_bn=row.provider_name_bn or row.provider_name_en,
+            seeker_name_en=row.seeker_name_en,
+            seeker_name_bn=row.seeker_name_bn or row.seeker_name_en,
         )
 
     async def get_broadcast_by_id(self, broadcast_id: UUID) -> UrgentBroadcast | None:

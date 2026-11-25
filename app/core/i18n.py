@@ -67,7 +67,7 @@ MESSAGES = {
         "too_many_open_bookings": "You can unlock up to 10 provider numbers at a time. Please wait 2 hours before unlocking more.",
         "provider_unavailable": "This provider is currently unavailable.",
         "broadcast_not_found": "Broadcast not found or already expired.",
-        "broadcast_already_claimed": "Sorry, another provider has already claimed this.",
+        "broadcast_already_claimed": "Sorry, another provider has already claimed this.", "broadcast_already_completed": "Other party has already mark this complete.",
         "broadcast_created": "Urgent broadcast sent. Waiting for a provider.",
         "no_providers_found": "No providers found in your area.",
         "work_schedule_required": "work schedule is required when hired is true.",
@@ -110,8 +110,11 @@ MESSAGES = {
         "broadcast_cancelled": "This urgent broadcast is cancelled.",
         "broadcast_cancel_not_allowed": "Only a job you have accepted can be cancelled.",
         "broadcast_cancelled_by_provider": "You have cancelled this urgent job.",
+        "broadcast_cannot_complete": "You can only complete a job you have accepted.",
+
     },
     "bn": {
+        "broadcast_cannot_complete": "আপনি শুধুমাত্র আপনার জরুরী কাজটিই সম্পন্ন করতে পারবেন।",
         "broadcast_cancel_not_allowed": "শুধু আপনার গ্রহণ করা কাজই বাতিল করা যায়।",
         "broadcast_cancelled_by_provider": "আপনি এই জরুরি কাজটি বাতিল করেছেন।",
         "broadcast_cancelled": "এই আর্জেন্ট ব্রেডক্যাস্টটি বাতিল করা হয়েছে।",
@@ -186,6 +189,7 @@ MESSAGES = {
         "provider_unavailable": "এই প্রোভাইডার এখন উপলব্ধ নেই।",
         "broadcast_not_found": "ব্রডকাস্ট পাওয়া যায়নি বা মেয়াদ শেষ।",
         "broadcast_already_claimed": "দুঃখিত, অন্য একজন প্রোভাইডার আগেই এটি গ্রহণ করেছেন।",
+        "broadcast_already_completed": "অন্য পক্ষ ইতিমধ্যেই এটিকে সম্পন্ন হিসেবে চিহ্নিত করেছে।",
         "broadcast_created": "জরুরি অনুরোধ পাঠানো হয়েছে। প্রোভাইডারের জন্য অপেক্ষা করুন।",
         "no_providers_found": "আপনার এলাকায় কোনো প্রোভাইডার পাওয়া যায়নি।",
         "work_schedule_required": "কাজের সময়সূচি প্রদান করুন।",

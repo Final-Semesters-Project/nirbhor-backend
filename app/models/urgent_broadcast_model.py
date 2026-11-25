@@ -14,6 +14,7 @@ class BroadcastStatus(str, enum.Enum):
     CLAIMED = "claimed"
     EXPIRED = "expired"
     CANCELLED = "cancelled"
+    COMPLETED = "completed"
 
 
 class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
@@ -74,6 +75,10 @@ class UrgentBroadcast(UUIDMixin, TimestampMixin, Base):
 
     cancelled_at: Mapped[datetime | None] = mapped_column(
         DateTime(timezone=True), nullable=True)
+
+    completed_at: Mapped[datetime | None] = mapped_column(
+        DateTime(timezone=True), nullable=True
+    )
 
     __table_args__ = (
         Index(

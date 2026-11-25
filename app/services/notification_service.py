@@ -3,6 +3,7 @@ from uuid import UUID
 from firebase_admin import messaging
 from loguru import logger
 
+from app.models.user_model import Role
 from app.repositories.booking_repository import BookingFollowupData
 
 
@@ -240,6 +241,43 @@ class NotificationService:
                 notification=messaging.Notification(title=title, body=body),
             ))
         logger.info(f"Broadcast {broadcast_id}: provider-cancelled push sent")
+
+    @staticmethod
+    async def send_broadcast_completed(
+        fcm_token: str,
+        other_party_name_en: str,
+        other_party_name_bn: str,
+        preferred_lang: str,
+        broadcast_id: UUID,
+        recipient_role: Role
+    ) -> None:
+        if not fcm_token:
+            return
+
+        seeker_notification_body = (
+            f"{other_party_name_en} marked your urgent job as completed." if preferred_lang == "en" else f"{other_party_name_bn} আপনার জরুরি কাজটি সম্পন্ন হিসেবে চিহ্নিত করেছে।"
+        )
+
+        provider_notification_body = (
+            f"{other_party_name_en} marked your urgent job as completed." if preferred_lang == "en" else f"{other_party_name_bn} তার সাথে আপনার জরুরি কাজটি সম্পন্ন হিসেবে চিহ্নিত করেছে।"
+        )
+
+        title = "জরুরী কাজ সম্পন্ন" if preferred_lang == "bn" else "Urgent job completed"
+        body = seeker_notification_body if recipient_role == Role.SEEKER else provider_notification_body
+
+        await NotificationService._send(
+            message=messaging.Message(
+                token=fcm_token,
+                data={
+                    "type": "BROADCAST_COMPLETED",
+                    "broadcast_id": str(broadcast_id),
+                    "other_party_name_en": other_party_name_en or "",
+                    "other_party_name_bn": other_party_name_bn or "",
+                    "preferred_lang": preferred_lang,
+                },
+                notification=messaging.Notification(title=title, body=body),
+            ))
+        logger.info(f"Broadcast {broadcast_id}: completed push sent")
 
     # ── Urgent broadcast (called from request handler) ────────────────────────
 

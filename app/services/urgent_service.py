@@ -10,11 +10,12 @@ from app.core.i18n import t
 from app.core.paginator import paginate
 from app.models.skill_model import Skill
 from app.models.urgent_broadcast_model import BroadcastStatus, UrgentBroadcast
+from app.models.user_model import Role
 from app.repositories.skill_repository import SkillRepository
 from app.repositories.urgent_repository import UrgentBroadcastRepository
 from app.repositories.user_repository import UserRepository
 from app.schemas.pagination_schema import PageResponse
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, CompleteUrgentBroadcastResponse, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCancelResponse, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse, ClaimedBroadcastResponseToProvider
 from app.services.notification_service import NotificationService
 from geoalchemy2.shape import to_shape
 
@@ -214,6 +215,85 @@ class UrgentService:
                     (seeker.name_bn or seeker.name_en) if lang ==
                     "bn" else seeker.name_en) if seeker else "",
             )
+        )
+
+    @staticmethod
+    async def complete_broadcast(
+        broadcast_id: UUID,
+        user_id: UUID,
+        db: AsyncSession,
+        lang: str,
+    ) -> CompleteUrgentBroadcastResponse:
+        """
+        Atomic completion by either the broadcast's Seeker or the assigned Provider.
+        Pessimistic lock ensures only the first caller triggers FCM notifications;
+        a simultaneous second tap returns 409 Conflict (or idempotent 200 if desired).
+        """
+        urgent_repo = UrgentBroadcastRepository(db)
+        broadcast, just_completed = await urgent_repo.complete_a_broadcast(broadcast_id)
+
+        if not broadcast:
+            raise DomainValidationError(t("broadcast_not_found", lang))
+
+        # Ownership check: only this broadcast's seeker or assigned provider can complete it
+        if user_id not in (broadcast.seeker_id, broadcast.claimed_by_provider_id):
+            raise DomainValidationError(t("broadcast_cannot_complete", lang))
+
+        # Already completed before we acquired the lock (e.g. the other party tapped first)
+        if not just_completed:
+            if broadcast.status == BroadcastStatus.COMPLETED:
+                raise DomainIntegrityError(
+                    t("broadcast_already_completed", lang))
+            raise DomainValidationError(t("broadcast_cannot_complete", lang))
+
+        # Save provider_id before commit (though it stays on the row)
+        provider_id = broadcast.claimed_by_provider_id
+        completed_at = broadcast.completed_at
+
+        await db.commit()
+
+        logger.info(
+            f"Urgent broadcast {broadcast_id} marked COMPLETED by user {user_id}")
+
+        # Notify both Seeker and Provider
+        if provider_id:
+            notification_data = await urgent_repo.get_completed_notification_data(
+                seeker_id=broadcast.seeker_id,
+                provider_id=provider_id,
+            )
+
+            if notification_data:
+                if notification_data.seeker_fcm_token:
+                    await NotificationService.send_broadcast_completed(
+                        fcm_token=notification_data.seeker_fcm_token,
+                        other_party_name_en=notification_data.provider_name_en,
+                        other_party_name_bn=notification_data.provider_name_bn,
+                        preferred_lang=notification_data.seeker_preferred_lang,
+                        recipient_role=Role.SEEKER,
+                        broadcast_id=broadcast_id
+                    )
+                else:
+                    logger.warning(
+                        f"No FCM token for seeker {broadcast.seeker_id} — skipping completion push")
+
+                if notification_data.provider_fcm_token:
+                    await NotificationService.send_broadcast_completed(
+                        fcm_token=notification_data.provider_fcm_token,
+                        other_party_name_en=notification_data.seeker_name_en,
+                        other_party_name_bn=notification_data.seeker_name_bn,
+                        preferred_lang=notification_data.provider_preferred_lang,
+                        recipient_role=Role.PROVIDER,
+                        broadcast_id=broadcast_id
+                    )
+                else:
+                    logger.warning(
+                        f"No FCM token for provider {provider_id} — skipping completion push")
+
+        return CompleteUrgentBroadcastResponse(
+            broadcast_id=broadcast.id,
+            status=broadcast.status,
+            completed_at=completed_at,  # type: ignore[arg-type]
+            message=t("broadcast_completed", lang),
         )
 
     @staticmethod

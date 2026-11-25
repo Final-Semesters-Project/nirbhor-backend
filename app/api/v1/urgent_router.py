@@ -2,13 +2,13 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, Query, Request, Response
 from loguru import logger
 from sqlalchemy.ext.asyncio import AsyncSession
-from app.api.dependencies import get_current_provider, get_current_seeker
+from app.api.dependencies import get_current_provider, get_current_seeker, get_current_user
 from app.core.i18n import get_lang
 from app.db.session import get_db_session
 from app.models.urgent_broadcast_model import BroadcastStatus
 from app.models.user_model import User
 from app.schemas.pagination_schema import PageResponse
-from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
+from app.schemas.urgent_schema import BroadcastStatusResponseForSeeker, ClaimedBroadcastResponseToProvider, CompleteUrgentBroadcastResponse, ProviderCancelBroadcastResponse, ProviderUrgentBroadcastItem, SeekerUrgentBroadcastItem, UrgentBroadcastCreateSchema, UrgentBroadcastDetailResponse, UrgentBroadcastCreateResponse
 from app.services.urgent_service import UrgentService
 from app.core.rate_limiter import limiter
 
@@ -106,6 +106,27 @@ async def claim_urgent_broadcast(
     return await UrgentService.claim_broadcast(
         broadcast_id=broadcast_id,
         provider_id=current_user.id,
+        db=db,
+        lang=lang,
+    )
+
+
+@router.post("/broadcast/{broadcast_id}/completed", status_code=200,
+             response_model=CompleteUrgentBroadcastResponse
+             )
+async def complete_urgent_broadcast(
+    broadcast_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db_session),
+    lang: str = Depends(get_lang),
+):
+    """
+    Provider/Seeker Completes an urgent broadcast. Atomic pessimistic lock ensures only one wins.
+    409 if seeker/provider already completes it.
+    """
+    return await UrgentService.complete_broadcast(
+        broadcast_id=broadcast_id,
+        user_id=current_user.id,
         db=db,
         lang=lang,
     )
